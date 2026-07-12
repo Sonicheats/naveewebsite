@@ -14,21 +14,29 @@ const NaveeBLE = (() => {
     const FALLBACK_SERVICE_UUID = '0000ffe0-0000-1000-8000-00805f9b34fb';
     const FALLBACK_CHAR_UUID    = '0000ffe1-0000-1000-8000-00805f9b34fb';
 
+    // 🎯 BRIGHTWAY / NAVEE proprietary UUIDs
+    // Source: robocoffee.de reverse engineering of Brightway scooter BLE protocol
+    // Navee is manufactured by Brightway (Suzhou) — ALL Navee models use this service:
+    // S65, V40, V50, S65C, ST3 Pro, GT3, GT5, N65, N65i, etc.
+    const BRIGHTWAY_SERVICE_UUID = '00000101-0065-6c62-2e74-6f696d2e696d';
+    const BRIGHTWAY_TXRX_UUID    = '00000100-0065-6c62-2e74-6f696d2e696d'; // TX+RX (same char)
+    const BRIGHTWAY_BUTTON_UUID  = '00000102-0065-6c62-2e74-6f696d2e696d'; // Button notify
+
     // Extended pool — Web Bluetooth requires ALL services you might access to be
     // declared upfront in optionalServices, even for auto-discovery.
-    // Covers Nordic NUS, HM-10, Ninebot/Segway custom, Xiaomi, and generic UART clones.
     const ALL_OPTIONAL_SERVICES = [
+        '00000101-0065-6c62-2e74-6f696d2e696d', // ⭐ Brightway/Navee PRIMARY (ST3 Pro, S65, V40...)
         '6e400001-b5a3-f393-e0a9-e50e24dcca9e', // Nordic UART (NUS)
         '0000ffe0-0000-1000-8000-00805f9b34fb', // HM-10 FFE0
         '0000fff0-0000-1000-8000-00805f9b34fb', // Generic FFF0
         '0000fee7-0000-1000-8000-00805f9b34fb', // Ninebot/Segway FEE7
         '0000180a-0000-1000-8000-00805f9b34fb', // Device Information
         '0000180f-0000-1000-8000-00805f9b34fb', // Battery Service
-        '0000fd00-0000-1000-8000-00805f9b34fb', // Custom FD00 (some scooters)
+        '0000fd00-0000-1000-8000-00805f9b34fb', // Custom FD00
         '0000ae00-0000-1000-8000-00805f9b34fb', // Custom AE00
         '0000be00-0000-1000-8000-00805f9b34fb', // Custom BE00
         '0000ab00-0000-1000-8000-00805f9b34fb', // Custom AB00
-        '00001234-0000-1000-8000-00805f9b34fb', // Custom 1234 (some OEMs)
+        '00001234-0000-1000-8000-00805f9b34fb', // Custom 1234
         '0000a002-0000-1000-8000-00805f9b34fb', // Custom A002
     ];
 
@@ -238,15 +246,42 @@ const NaveeBLE = (() => {
         // --- Service Discovery: try known UUIDs first, then auto-discover ---
         let serviceFound = false;
 
-        // 1️⃣ Nordic UART (NUS) — most common on Navee
-        try {
-            service = await server.getPrimaryService(UART_SERVICE_UUID);
-            txChar  = await service.getCharacteristic(UART_TX_CHAR_UUID);
-            rxChar  = await service.getCharacteristic(UART_RX_CHAR_UUID);
-            useNordic = true;
-            serviceFound = true;
-            log('✓ Nordic UART Service (NUS) found');
-        } catch (_) { /* not NUS — keep trying */ }
+        // 0️⃣ BRIGHTWAY/NAVEE — the actual UUID used by ALL Navee scooters
+        // (S65, V40, V50, S65C, ST3 Pro, GT series, N65i — all made by Brightway)
+        // Source: robocoffee.de BLE reverse engineering research
+        if (!serviceFound) {
+            try {
+                service = await server.getPrimaryService(BRIGHTWAY_SERVICE_UUID);
+                // Brightway uses a single characteristic for both TX and RX
+                const char = await service.getCharacteristic(BRIGHTWAY_TXRX_UUID);
+                txChar = char;
+                rxChar = char;
+                useNordic = false;
+                serviceFound = true;
+                log('✓ Brightway/Navee service found (ST3 Pro / S65 / V40 / GT series)');
+                log('  Service: ' + BRIGHTWAY_SERVICE_UUID);
+                log('  TX+RX char: ' + BRIGHTWAY_TXRX_UUID);
+                // Also try to get the button characteristic for notifications
+                try {
+                    const btnChar = await service.getCharacteristic(BRIGHTWAY_BUTTON_UUID);
+                    // Use button char for TX notifications if available
+                    txChar = btnChar;
+                    log('  Button notify char: ' + BRIGHTWAY_BUTTON_UUID);
+                } catch (_) { /* no button char, txChar stays as TXRX */ }
+            } catch (_) { /* not Brightway */ }
+        }
+
+        // 1️⃣ Nordic UART (NUS) — older/generic Navee or third-party BLE modules
+        if (!serviceFound) {
+            try {
+                service = await server.getPrimaryService(UART_SERVICE_UUID);
+                txChar  = await service.getCharacteristic(UART_TX_CHAR_UUID);
+                rxChar  = await service.getCharacteristic(UART_RX_CHAR_UUID);
+                useNordic = true;
+                serviceFound = true;
+                log('✓ Nordic UART Service (NUS) found');
+            } catch (_) { /* not NUS */ }
+        }
 
         // 2️⃣ HM-10 FFE0 fallback
         if (!serviceFound) {
