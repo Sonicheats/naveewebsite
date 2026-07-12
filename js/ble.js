@@ -2,6 +2,7 @@
 // NaveeHack — ble.js
 // Web Bluetooth Connection Manager
 // "One API to find them, one API to bind them" — ENI
+// Now Safari-aware because WebKit said 'maybe' — ENI
 // ============================================================
 
 const NaveeBLE = (() => {
@@ -113,18 +114,47 @@ const NaveeBLE = (() => {
         }
     }
 
+    // --- Detect Safari ---
+    function isSafari() {
+        const ua = navigator.userAgent;
+        // Safari on macOS or iOS, but NOT Chrome/Edge/Opera pretending to be Safari
+        return /Safari/.test(ua) && !/Chrome|CriOS|Chromium|Edg|OPR|Opera/.test(ua);
+    }
+
     // --- Check if Web Bluetooth is available ---
+    // Returns { supported: bool, experimental: bool, browser: string }
     function isSupported() {
-        return !!navigator.bluetooth;
+        const safari = isSafari();
+        const hasBluetooth = !!navigator.bluetooth;
+
+        if (hasBluetooth && safari) {
+            // Safari has it behind a feature flag — it exists but may be flaky
+            return { supported: true, experimental: true, browser: 'safari' };
+        }
+
+        if (hasBluetooth) {
+            return { supported: true, experimental: false, browser: 'chromium' };
+        }
+
+        // No Web Bluetooth at all
+        return {
+            supported: false,
+            experimental: false,
+            browser: safari ? 'safari' : (/Firefox/.test(navigator.userAgent) ? 'firefox' : 'unknown'),
+        };
     }
 
     // --- Scan and Connect (filtered mode) ---
     async function scanAndConnect() {
-        if (!isSupported()) {
-            const err = 'Web Bluetooth not supported. Use Chrome/Edge/Opera.';
+        if (!isSupported().supported) {
+            const err = 'Web Bluetooth not supported. Use Chrome/Edge/Opera, or enable it in Safari Feature Flags.';
             log(err, 'error');
             emit('error', { message: err });
             throw new Error(err);
+        }
+
+        if (isSupported().experimental) {
+            log('Safari experimental Web Bluetooth detected — fingers crossed 🤞', 'warn');
         }
 
         log('Scanning for Navee scooters (filtered)...');
@@ -168,8 +198,8 @@ const NaveeBLE = (() => {
 
     // --- Scan ALL devices (no name filter — last resort) ---
     async function scanAll() {
-        if (!isSupported()) {
-            const err = 'Web Bluetooth not supported. Use Chrome/Edge/Opera.';
+        if (!isSupported().supported) {
+            const err = 'Web Bluetooth not supported. Use Chrome/Edge/Opera, or enable it in Safari Feature Flags.';
             log(err, 'error');
             emit('error', { message: err });
             throw new Error(err);
@@ -398,10 +428,22 @@ const NaveeBLE = (() => {
             const chunk = data.slice(i, i + chunkSize);
 
             // Use the correct write method based on characteristic properties
-            if (useWriteWithoutResponse) {
-                await rxChar.writeValueWithoutResponse(chunk);
-            } else {
-                await rxChar.writeValue(chunk);
+            // Safari may claim writeWithoutResponse but then choke on it, so try/catch fallback
+            try {
+                if (useWriteWithoutResponse) {
+                    await rxChar.writeValueWithoutResponse(chunk);
+                } else {
+                    await rxChar.writeValue(chunk);
+                }
+            } catch (writeErr) {
+                // Safari fallback: if writeValueWithoutResponse fails, try writeValue
+                if (useWriteWithoutResponse && isSafari()) {
+                    log('Safari writeValueWithoutResponse failed, falling back to writeValue', 'warn');
+                    useWriteWithoutResponse = false;
+                    await rxChar.writeValue(chunk);
+                } else {
+                    throw writeErr;
+                }
             }
 
             if (i + chunkSize < data.length) {
@@ -537,6 +579,7 @@ const NaveeBLE = (() => {
 
     return {
         isSupported,
+        isSafari,
         scanAndConnect,
         scanAll,
         disconnect,

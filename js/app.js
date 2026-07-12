@@ -2,6 +2,7 @@
 // NaveeHack — app.js
 // Main Application Controller
 // "The brain that wires it all together" — ENI
+// Now with Safari/iOS awareness — because iPhones are needy — ENI
 // ============================================================
 
 const App = (() => {
@@ -14,9 +15,33 @@ const App = (() => {
     function init() {
         console.log('%c[NaveeHack] Initializing...', 'color: #00f5d4; font-weight: bold');
 
-        // Check Web Bluetooth support
-        if (!NaveeBLE.isSupported()) {
-            document.getElementById('bleWarning').style.display = 'flex';
+        // iOS viewport height fix — set a CSS variable for the real viewport height
+        // because 100vh on iOS Safari includes the area behind the URL bar
+        setupiOSViewportFix();
+
+        // Check Web Bluetooth support (now returns rich object)
+        const bleSupport = NaveeBLE.isSupported();
+        if (!bleSupport.supported) {
+            const warningEl = document.getElementById('bleWarning');
+            if (warningEl) {
+                warningEl.style.display = 'flex';
+                // Show Safari-specific instructions if the browser is Safari
+                const safariSteps = warningEl.querySelector('.safari-setup-steps');
+                if (safariSteps) {
+                    safariSteps.style.display = bleSupport.browser === 'safari' ? 'block' : 'none';
+                }
+                // Update the message based on browser
+                const msgEl = warningEl.querySelector('.ble-warning-browser-msg');
+                if (msgEl) {
+                    if (bleSupport.browser === 'safari') {
+                        msgEl.innerHTML = 'Safari supports Web Bluetooth experimentally! Enable it below, then <strong>reload this page</strong>.';
+                    } else if (bleSupport.browser === 'firefox') {
+                        msgEl.innerHTML = 'Firefox does not support Web Bluetooth. Use <strong>Chrome</strong>, <strong>Edge</strong>, or enable it in <strong>Safari</strong>.';
+                    } else {
+                        msgEl.innerHTML = 'Use <strong>Google Chrome</strong>, <strong>Microsoft Edge</strong>, or <strong>Opera</strong> on desktop or Android.';
+                    }
+                }
+            }
         }
 
         // Setup navigation
@@ -41,6 +66,17 @@ const App = (() => {
         const demoBtn = document.getElementById('btnDemo');
         if (demoBtn) {
             demoBtn.addEventListener('click', toggleDemo);
+        }
+
+        // Setup the fallback demo button inside the BLE warning
+        const demoBtnFallback = document.getElementById('btnDemoFallback');
+        if (demoBtnFallback) {
+            demoBtnFallback.addEventListener('click', () => {
+                // Close the BLE warning and start demo
+                const warningEl = document.getElementById('bleWarning');
+                if (warningEl) warningEl.style.display = 'none';
+                toggleDemo();
+            });
         }
 
         // Setup apply button
@@ -74,6 +110,25 @@ const App = (() => {
         initParticles();
 
         console.log('%c[NaveeHack] Ready. 🛴⚡', 'color: #00f5d4; font-weight: bold');
+    }
+
+    // --- iOS Viewport Height Fix ---
+    // Safari's 100vh includes the area behind the dynamic toolbar.
+    // This sets --vh to the actual visible viewport height.
+    function setupiOSViewportFix() {
+        function setVH() {
+            // Use visualViewport if available (iOS 13+), fallback to innerHeight
+            const vh = (window.visualViewport ? window.visualViewport.height : window.innerHeight) * 0.01;
+            document.documentElement.style.setProperty('--vh', `${vh}px`);
+        }
+
+        setVH();
+        window.addEventListener('resize', setVH);
+
+        // visualViewport fires its own resize event (e.g., when iOS keyboard appears)
+        if (window.visualViewport) {
+            window.visualViewport.addEventListener('resize', setVH);
+        }
     }
 
     // --- Navigation ---
@@ -518,13 +573,23 @@ const App = (() => {
         const ctx = canvas.getContext('2d');
         let particles = [];
         const count = 50;
+        const dpr = window.devicePixelRatio || 1; // Retina support
 
         function resize() {
-            canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight;
+            // Use visualViewport on iOS for accurate dimensions
+            const vw = window.visualViewport ? window.visualViewport.width : window.innerWidth;
+            const vh = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+            canvas.width = vw * dpr;
+            canvas.height = vh * dpr;
+            canvas.style.width = vw + 'px';
+            canvas.style.height = vh + 'px';
+            ctx.scale(dpr, dpr);
         }
         resize();
         window.addEventListener('resize', resize);
+        if (window.visualViewport) {
+            window.visualViewport.addEventListener('resize', resize);
+        }
 
         for (let i = 0; i < count; i++) {
             particles.push({

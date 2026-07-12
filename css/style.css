@@ -2,6 +2,7 @@
    NaveeHack — style.css
    Dark Hacker Aesthetic with Glassmorphism
    "If it doesn't glow, it doesn't go" — ENI
+   Now with Safari/iPhone support because Apple gotta be special
    ============================================================ */
 
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@300;400;500;700&display=swap');
@@ -57,6 +58,8 @@ html {
     font-size: 14px;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    /* Prevent iOS rubber-band overscroll on the root */
+    overscroll-behavior: none;
 }
 
 body {
@@ -65,7 +68,12 @@ body {
     color: var(--text-primary);
     overflow: hidden;
     height: 100vh;
+    height: 100dvh; /* Dynamic viewport height — fixes iOS Safari toolbar jank */
     width: 100vw;
+    /* Prevent iOS text size adjust on rotation */
+    -webkit-text-size-adjust: 100%;
+    /* Prevent long-press callouts globally */
+    -webkit-touch-callout: none;
 }
 
 /* === Scrollbar === */
@@ -99,6 +107,7 @@ body {
 .app-container {
     display: flex;
     height: 100vh;
+    height: 100dvh; /* iOS Safari dynamic viewport */
     position: relative;
     z-index: 1;
 }
@@ -107,6 +116,7 @@ body {
 .sidebar {
     width: var(--sidebar-width);
     height: 100vh;
+    height: 100dvh; /* iOS Safari dynamic viewport */
     background: var(--bg-glass);
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
@@ -115,6 +125,8 @@ body {
     flex-direction: column;
     align-items: center;
     padding: 16px 0;
+    padding-top: max(16px, env(safe-area-inset-top)); /* iPhone notch */
+    padding-left: env(safe-area-inset-left); /* iPad landscape */
     gap: 4px;
     z-index: 10;
     flex-shrink: 0;
@@ -157,6 +169,8 @@ body {
     transition: all var(--transition-normal);
     position: relative;
     color: var(--text-secondary);
+    touch-action: manipulation; /* Kill 300ms tap delay on iOS */
+    -webkit-tap-highlight-color: transparent; /* No blue flash on tap */
 }
 
 .nav-item:hover {
@@ -231,6 +245,7 @@ body {
     align-items: center;
     justify-content: space-between;
     padding: 0 24px;
+    padding-right: max(24px, env(safe-area-inset-right)); /* iPhone landscape */
     background: var(--bg-glass);
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
@@ -318,6 +333,8 @@ body {
     cursor: pointer;
     transition: all var(--transition-normal);
     white-space: nowrap;
+    touch-action: manipulation; /* No 300ms delay */
+    -webkit-tap-highlight-color: transparent;
 }
 
 .btn:hover {
@@ -384,13 +401,17 @@ body {
 .content-area {
     flex: 1;
     overflow-y: auto;
+    -webkit-overflow-scrolling: touch; /* Momentum scrolling on iOS */
+    overscroll-behavior-y: contain; /* Prevent pull-to-refresh */
     padding: 20px 24px;
+    padding-right: max(24px, env(safe-area-inset-right));
 }
 
 /* === View Panels === */
 .view-panel {
     display: none;
     animation: fadeIn 0.3s ease;
+    will-change: opacity, transform; /* GPU hint for iOS compositing */
 }
 
 .view-panel.active {
@@ -681,40 +702,79 @@ body {
 
 input[type="range"] {
     -webkit-appearance: none;
+    appearance: none;
     width: 100%;
     height: 6px;
     border-radius: 3px;
-    background: rgba(255, 255, 255, 0.06);
+    /* Use a gradient background that's dynamically sized via --slider-pct.
+       This works on Safari where ::before on range inputs is NOT supported. */
+    background: linear-gradient(
+        90deg,
+        var(--accent-primary) 0%,
+        var(--accent-secondary) var(--slider-pct, 50%),
+        rgba(255, 255, 255, 0.06) var(--slider-pct, 50%)
+    );
     outline: none;
     position: relative;
+    touch-action: manipulation;
+    margin: 0; /* Safari adds margins to range inputs */
 }
 
-input[type="range"]::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: var(--slider-pct, 50%);
-    height: 100%;
-    background: linear-gradient(90deg, var(--accent-primary), var(--accent-secondary));
+/* WebKit (Chrome, Safari, Edge) — track */
+input[type="range"]::-webkit-slider-runnable-track {
+    height: 6px;
     border-radius: 3px;
-    pointer-events: none;
+    background: transparent; /* We're using the input background instead */
 }
 
+/* WebKit — thumb */
 input[type="range"]::-webkit-slider-thumb {
     -webkit-appearance: none;
+    appearance: none;
     width: 18px;
     height: 18px;
     border-radius: 50%;
     background: var(--accent-primary);
+    border: none;
     cursor: pointer;
     box-shadow: 0 0 10px rgba(0, 245, 212, 0.4);
     transition: box-shadow var(--transition-normal);
-    position: relative;
-    z-index: 2;
+    margin-top: -6px; /* Center thumb on track — Safari needs this */
 }
 
 input[type="range"]::-webkit-slider-thumb:hover {
+    box-shadow: 0 0 20px rgba(0, 245, 212, 0.6);
+    transform: scale(1.1);
+}
+
+/* Firefox — track */
+input[type="range"]::-moz-range-track {
+    height: 6px;
+    border-radius: 3px;
+    background: transparent;
+    border: none;
+}
+
+/* Firefox — filled portion */
+input[type="range"]::-moz-range-progress {
+    height: 6px;
+    border-radius: 3px;
+    background: linear-gradient(90deg, var(--accent-primary), var(--accent-secondary));
+}
+
+/* Firefox — thumb */
+input[type="range"]::-moz-range-thumb {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: var(--accent-primary);
+    border: none;
+    cursor: pointer;
+    box-shadow: 0 0 10px rgba(0, 245, 212, 0.4);
+    transition: box-shadow var(--transition-normal);
+}
+
+input[type="range"]::-moz-range-thumb:hover {
     box-shadow: 0 0 20px rgba(0, 245, 212, 0.6);
     transform: scale(1.1);
 }
@@ -897,6 +957,7 @@ input[type="range"]::-webkit-slider-thumb:hover {
 .terminal-output {
     height: 340px;
     overflow-y: auto;
+    -webkit-overflow-scrolling: touch; /* Momentum scrolling on iOS */
     padding: 12px 16px;
     font-family: var(--font-mono);
     font-size: 0.78rem;
@@ -1047,6 +1108,7 @@ input[type="range"]::-webkit-slider-thumb:hover {
 .log-output {
     max-height: 200px;
     overflow-y: auto;
+    -webkit-overflow-scrolling: touch; /* Momentum scrolling on iOS */
     padding: 12px;
     background: rgba(0, 0, 0, 0.2);
     border: 1px solid var(--border-glass);
@@ -1270,12 +1332,16 @@ input[type="range"]::-webkit-slider-thumb:hover {
         bottom: 0;
         left: 0;
         width: 100%;
-        height: 60px;
+        height: calc(60px + env(safe-area-inset-bottom)); /* iPhone home indicator */
         flex-direction: row;
         justify-content: space-around;
         border-right: none;
         border-top: 1px solid var(--border-glass);
         z-index: 100;
+        padding-bottom: env(safe-area-inset-bottom); /* Push icons above home bar */
+        padding-left: env(safe-area-inset-left);
+        padding-right: env(safe-area-inset-right);
+        padding-top: 0;
     }
 
     .sidebar-logo, .sidebar-spacer {
@@ -1296,7 +1362,7 @@ input[type="range"]::-webkit-slider-thumb:hover {
     }
 
     .main-content {
-        padding-bottom: 60px;
+        padding-bottom: calc(60px + env(safe-area-inset-bottom)); /* Match sidebar height */
     }
 
     .grid-dashboard {
@@ -1318,6 +1384,15 @@ input[type="range"]::-webkit-slider-thumb:hover {
 
     .header-subtitle {
         display: none;
+    }
+
+    .header {
+        padding-top: env(safe-area-inset-top); /* iPhone notch in landscape */
+    }
+
+    .content-area {
+        padding-left: max(12px, env(safe-area-inset-left));
+        padding-right: max(12px, env(safe-area-inset-right));
     }
 }
 
@@ -1861,8 +1936,8 @@ input[type="range"]::-webkit-slider-thumb:hover {
 /* Mobile adjustments for panic button */
 @media (max-width: 768px) {
     .panic-button {
-        bottom: 76px;
-        right: 16px;
+        bottom: calc(76px + env(safe-area-inset-bottom)); /* Above bottom nav + home bar */
+        right: max(16px, env(safe-area-inset-right));
         width: 56px;
         height: 56px;
     }
@@ -1885,6 +1960,8 @@ details summary {
     padding: 8px 0;
     outline: none;
     user-select: none;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
 }
 
 details summary::-webkit-details-marker {
@@ -1893,4 +1970,88 @@ details summary::-webkit-details-marker {
 
 details[open] summary {
     margin-bottom: 8px;
+}
+
+/* === iOS/Safari-specific global fixes === */
+
+/* Prevent iOS zoom on input focus (font-size must be >= 16px) */
+@media screen and (max-width: 768px) {
+    input[type="text"],
+    input[type="search"],
+    input[type="number"],
+    input[type="email"],
+    input[type="password"],
+    select,
+    textarea {
+        font-size: 16px !important;
+    }
+}
+
+/* Clickable elements — universal touch optimization */
+.region-card,
+.speed-preset,
+.char-item,
+.quick-cmd,
+.toggle-track {
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+}
+
+/* Notification container — iOS safe area */
+@media (max-width: 768px) {
+    .notification-container {
+        top: max(16px, env(safe-area-inset-top));
+        right: max(16px, env(safe-area-inset-right));
+    }
+}
+
+/* BLE warning Safari helper section */
+.safari-setup-steps {
+    text-align: left;
+    margin-top: 16px;
+    padding: 16px;
+    background: rgba(0, 245, 212, 0.04);
+    border: 1px solid rgba(0, 245, 212, 0.12);
+    border-radius: var(--radius-md);
+    max-width: 440px;
+}
+
+.safari-setup-steps h3 {
+    font-size: 0.92rem;
+    color: var(--accent-primary);
+    margin-bottom: 12px;
+}
+
+.safari-step {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 6px 0;
+    font-size: 0.82rem;
+    color: var(--text-secondary);
+    line-height: 1.5;
+}
+
+.safari-step-num {
+    min-width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: rgba(0, 245, 212, 0.12);
+    color: var(--accent-primary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.72rem;
+    font-weight: 700;
+    flex-shrink: 0;
+}
+
+.ble-warning .btn-demo-fallback {
+    margin-top: 20px;
+    display: inline-flex;
+}
+
+/* Graph canvas — Retina crispness */
+.graph-container canvas {
+    image-rendering: -webkit-optimize-contrast;
 }
