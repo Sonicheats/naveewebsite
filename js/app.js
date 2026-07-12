@@ -336,8 +336,17 @@ const App = (() => {
                 if (parts.length >= 2) {
                     const cmdByte = parseInt(parts[1], 16);
                     const payload = parts.slice(2).map(h => parseInt(h, 16)).filter(n => !isNaN(n));
-                    const packet = NaveeProtocol.buildPacket(cmdByte, payload);
-                    const hex = NaveeProtocol.toHexString(packet);
+                    
+                    let packet;
+                    if (NaveeBLE.isST3Mode()) {
+                        packet = payload.length > 0 
+                            ? ST3Protocol.buildWriteCommand(cmdByte, payload)
+                            : ST3Protocol.buildReadCommand(cmdByte);
+                    } else {
+                        packet = NaveeProtocol.buildPacket(cmdByte, payload);
+                    }
+                    
+                    let hex = NaveeProtocol.toHexString(packet);
 
                     if (input) input.value = hex;
                     addTerminalEntry('tx', hex);

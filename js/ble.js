@@ -828,6 +828,10 @@ const NaveeBLE = (() => {
                     st3Cmd = ST3Protocol.CMD.WRITE_SPEED_LIMIT; // 0x6B
                     st3Payload = [payload[0]];
                     break;
+                case NaveeProtocol.CMD.WRITE_STARTUP_SPEED:
+                    st3Cmd = 0x6A; // Start speed limit
+                    st3Payload = [payload[0]];
+                    break;
                 case NaveeProtocol.CMD.WRITE_LIGHT:
                     st3Cmd = 0x54; // Headlight control
                     st3Payload = [payload[0]];
@@ -917,6 +921,7 @@ const NaveeBLE = (() => {
         sendHex,
         getDeviceInfo,
         isConnected,
+        isST3Mode: () => st3Mode,
         keepAlivePing,
         setMockMode,
         setMockInputs,
