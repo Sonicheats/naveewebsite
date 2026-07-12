@@ -861,8 +861,23 @@
 
                 <div class="card">
                     <div class="card-header">
-                        <span class="card-title">System Events</span>
-                        <button class="btn" onclick="document.getElementById('logOutput').innerHTML = ''" style="font-size: 0.72rem; padding: 4px 10px;">Clear</button>
+                        <span class="card-title">BLE Debug Log</span>
+                        <div style="display:flex; gap:6px; flex-wrap: wrap;">
+                            <select id="logFilter" class="text-input" style="font-size:0.72rem; padding:4px 8px; width:auto;">
+                                <option value="all">All</option>
+                                <option value="error">Errors only</option>
+                                <option value="warn">Warnings+</option>
+                            </select>
+                            <button class="btn" id="btnLogCopy" style="font-size:0.72rem; padding:4px 10px;">📋 Copy</button>
+                            <button class="btn" id="btnLogShare" style="font-size:0.72rem; padding:4px 10px;">📤 Share</button>
+                            <button class="btn" id="btnLogClear" style="font-size:0.72rem; padding:4px 10px;">🗑 Clear</button>
+                        </div>
+                    </div>
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                        <span style="font-size:0.72rem; color:var(--text-muted);">Tap 📋 Copy or 📤 Share to extract logs from Bluefy</span>
+                        <label style="display:flex; align-items:center; gap:6px; font-size:0.72rem; color:var(--text-muted); cursor:pointer;">
+                            <input type="checkbox" id="logAutoScroll" checked> Auto-scroll
+                        </label>
                     </div>
                     <div id="logOutput" class="log-output">
                         <div class="log-entry info"><span class="log-time">[--:--:--]</span> NaveeHack initialized. Waiting for BLE connection...</div>
