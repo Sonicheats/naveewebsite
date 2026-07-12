@@ -64,12 +64,8 @@ body {
     background: var(--bg-primary);
     color: var(--text-primary);
     overflow: hidden;
-    height: 100vh;
-    height: 100dvh; /* Modern browsers: dynamic viewport height (handles iOS address bar) */
+    height: var(--app-height, 100vh);
     width: 100vw;
-    position: fixed; /* Prevent iOS bounce/scroll on body */
-    top: 0;
-    left: 0;
 }
 
 /* === Scrollbar === */
@@ -102,8 +98,7 @@ body {
 /* === App Layout === */
 .app-container {
     display: flex;
-    height: 100vh;
-    height: 100dvh;
+    height: var(--app-height, 100vh);
     position: relative;
     z-index: 1;
 }
@@ -2021,15 +2016,8 @@ details[open] summary {
 
 /* iOS mobile layout fixes */
 @media (max-width: 768px) {
-    body {
-        height: 100vh;
-        height: 100dvh;
-    }
-
     .app-container {
         flex-direction: column;
-        height: 100vh;
-        height: 100dvh;
     }
 
     .main-content {
@@ -2048,9 +2036,14 @@ details[open] summary {
 
     /* Ensure cards are visible on mobile */
     .card {
-        background: rgba(15, 21, 32, 0.75);
+        background: rgba(15, 21, 32, 0.85);
         -webkit-backdrop-filter: blur(12px);
         backdrop-filter: blur(12px);
+    }
+
+    .view-panel.active {
+        display: block !important;
+        opacity: 1 !important;
     }
 }
 

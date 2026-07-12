@@ -14,6 +14,9 @@ const App = (() => {
     function init() {
         console.log('%c[NaveeHack] Initializing...', 'color: #00f5d4; font-weight: bold');
 
+        // iOS viewport height fix — 100vh lies on iOS, window.innerHeight tells the truth
+        fixViewportHeight();
+
         // Check Web Bluetooth support — smart detection for iOS/Safari/Firefox
         checkBLESupport();
 
