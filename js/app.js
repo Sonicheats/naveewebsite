@@ -143,9 +143,9 @@ const App = (() => {
 
             // ST3 Pro uses D0FF/87290102 — protocol unknown.
             // Do NOT blast 0x5A Ninebot commands or the scooter drops us.
-            // Only send initial reads on confirmed legacy Nordic/FFE protocol devices.
-            const svcType = (info.serviceType || '').toLowerCase();
-            const isLegacy = svcType.includes('nordic') || svcType.includes('ffe') || svcType.includes('nus');
+            // isLegacy = explicitly NOT an ST3 Pro connection
+            const svcType = (info.serviceType || '');
+            const isLegacy = !svcType.includes('ST3');
 
             if (isLegacy) {
                 setTimeout(async () => {
@@ -156,11 +156,13 @@ const App = (() => {
                     } catch (e) { addLog('Initial read error: ' + e.message, 'warn'); }
                 }, 500);
             } else {
-                addLog('ST3 Pro: holding silent — use Terminal tab to probe protocol', 'info');
+                addLog('ST3 Pro: holding silent — protocol unknown, all 0x5A writes blocked', 'warn');
                 startKeepAlive();
             }
 
-            if (currentView === 'dashboard') {
+            // Only start dashboard polling on legacy protocol —
+            // ST3 Pro doesn't understand 0x5A poll commands
+            if (!svcType.includes('ST3') && currentView === 'dashboard') {
                 Dashboard.startPolling();
             }
         });
