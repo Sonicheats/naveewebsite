@@ -1,0 +1,890 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="NaveeHack — Browser-based BLE tool for modifying Navee e-scooters. Connect via Web Bluetooth, read telemetry, and customize settings.">
+    <title>NaveeHack — E-Scooter BLE Tool</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛴</text></svg>">
+</head>
+<body>
+
+<!-- Particle Background -->
+<canvas id="particleCanvas"></canvas>
+
+<!-- BLE Not Supported Warning -->
+<div id="bleWarning" class="ble-warning">
+    <div class="ble-warning-icon">📡</div>
+    <h2>Web Bluetooth Not Available</h2>
+    <p>Your browser doesn't support Web Bluetooth. Please use <strong>Google Chrome</strong>, <strong>Microsoft Edge</strong>, or <strong>Opera</strong> on desktop or Android.</p>
+    <p style="margin-top: 8px; font-size: 0.8rem; color: rgba(255,255,255,0.3);">Safari and Firefox do not support Web Bluetooth.</p>
+</div>
+
+<!-- Notifications -->
+<div id="notifications" class="notification-container"></div>
+
+<!-- Confirm Dialog -->
+<div id="confirmOverlay" class="confirm-overlay">
+    <div class="confirm-dialog">
+        <div id="confirmTitle" class="confirm-title"></div>
+        <div id="confirmMessage" class="confirm-message"></div>
+        <div class="confirm-buttons">
+            <button id="confirmNo" class="btn">Cancel</button>
+            <button id="confirmYes" class="btn btn-danger">Confirm</button>
+        </div>
+    </div>
+</div>
+
+<!-- App Container -->
+<div class="app-container">
+
+    <!-- Sidebar Navigation -->
+    <nav class="sidebar">
+        <div class="sidebar-logo">
+            <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
+            </svg>
+        </div>
+
+        <div class="nav-item active" data-view="dashboard">
+            <svg viewBox="0 0 24 24"><path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/></svg>
+            <span class="tooltip">Dashboard</span>
+        </div>
+
+        <div class="nav-item" data-view="mods">
+            <svg viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.07.62-.07.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
+            <span class="tooltip">Modifications</span>
+        </div>
+
+        <div class="nav-item" data-view="terminal">
+            <svg viewBox="0 0 24 24"><path d="M20 19V7H4v12h16m0-16a2 2 0 012 2v14a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h16m-7 14v-2h5v2h-5m-3.42-4L5.57 9H8.4l3.3 3.3c.39.39.39 1.03 0 1.42L8.42 17H5.59l4-4z"/></svg>
+            <span class="tooltip">Terminal</span>
+        </div>
+
+        <div class="nav-item" data-view="scanner">
+            <svg viewBox="0 0 24 24"><path d="M11 1H3a2 2 0 00-2 2v8a2 2 0 002 2h8a2 2 0 002-2V3a2 2 0 00-2-2zm0 10H3V3h8v8zm10-10h-8a2 2 0 00-2 2v8a2 2 0 002 2h8a2 2 0 002-2V3a2 2 0 00-2-2zm0 10h-8V3h8v8zM11 13H3a2 2 0 00-2 2v8a2 2 0 002 2h8a2 2 0 002-2v-8a2 2 0 00-2-2zm0 10H3v-8h8v8zm10-10h-8a2 2 0 00-2 2v8a2 2 0 002 2h8a2 2 0 002-2v-8a2 2 0 00-2-2z"/></svg>
+            <span class="tooltip">BLE Scanner</span>
+        </div>
+
+        <div class="nav-item" data-view="graph">
+            <svg viewBox="0 0 24 24"><path d="M3.5 18.49l6-6.01 4 4L22 6.92l-1.41-1.41-7.09 7.97-4-4L2 16.99z"/></svg>
+            <span class="tooltip">Speed Graph</span>
+        </div>
+
+        <div class="nav-item" data-view="battery">
+            <svg viewBox="0 0 24 24"><path d="M15.67 4H14V2h-4v2H8.33C7.6 4 7 4.6 7 5.33v15.33C7 21.4 7.6 22 8.33 22h7.33c.74 0 1.34-.6 1.34-1.33V5.33C17 4.6 16.4 4 15.67 4zM13 18h-2v-2h2v2zm0-4h-2V9h2v5z"/></svg>
+            <span class="tooltip">Battery Health</span>
+        </div>
+
+        <div class="nav-item" data-view="ride">
+            <svg viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
+            <span class="tooltip">Ride Tracker</span>
+        </div>
+
+        <div class="nav-item" data-view="info">
+            <svg viewBox="0 0 24 24"><path d="M11 17h2v-6h-2v6zm1-15C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zM11 9h2V7h-2v2z"/></svg>
+            <span class="tooltip">Scooter Info</span>
+        </div>
+
+        <div class="sidebar-spacer"></div>
+
+        <div class="nav-item" data-view="log">
+            <svg viewBox="0 0 24 24"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>
+            <span class="tooltip">Event Log</span>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="main-content">
+
+        <!-- Header -->
+        <header class="header">
+            <div class="header-left">
+                <div>
+                    <div class="header-title">NaveeHack</div>
+                    <div class="header-subtitle">Navee BLE Scooter Tool v1.0</div>
+                </div>
+            </div>
+            <div class="header-right">
+                <div class="connection-badge">
+                    <div id="statusDot" class="status-dot disconnected"></div>
+                    <span id="statusText">Disconnected</span>
+                </div>
+
+                <div id="disconnectedPanel" style="display: flex; gap: 8px;">
+                    <button id="btnConnect" class="btn btn-primary">
+                        <svg class="icon" viewBox="0 0 24 24"><path d="M12.01 21.49L23.64 7c-.45-.34-4.93-4-11.64-4C5.28 3 .81 6.66.36 7l11.63 14.49.01.01.01-.01z"/></svg>
+                        Connect
+                    </button>
+                    <button id="btnScanAll" class="btn" title="Show ALL BLE devices — use if your scooter doesn't appear with normal Connect">
+                        📡 Scan All
+                    </button>
+                    <button id="btnDemo" class="btn">▶ Demo</button>
+                </div>
+
+                <div id="connectedPanel" style="display: none; align-items: center; gap: 10px;">
+                    <span id="deviceName" style="font-family: var(--font-mono); font-size: 0.82rem; color: var(--accent-primary);"></span>
+                    <button id="btnDisconnect" class="btn btn-danger">Disconnect</button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Content Area -->
+        <div class="content-area">
+
+            <!-- ============ DASHBOARD VIEW ============ -->
+            <div id="view-dashboard" class="view-panel active">
+
+                <div class="disclaimer-banner">
+                    <span class="disclaimer-icon">⚠️</span>
+                    <span><strong>Educational/Research Tool.</strong> Modifying German ABE-certified scooters to exceed 20 km/h is illegal on public roads and voids insurance. Use at your own risk.</span>
+                </div>
+
+                <div class="grid-dashboard">
+                    <!-- Speedometer -->
+                    <div class="card card-speedometer">
+                        <div class="card-header">
+                            <span class="card-title">Speed</span>
+                            <svg class="card-icon" viewBox="0 0 24 24"><path d="M20.38 8.57l-1.23 1.85a8 8 0 01-.22 7.58H5.07A8 8 0 0115.58 6.85l1.85-1.23A10 10 0 003.35 19a2 2 0 001.72 1h13.85a2 2 0 001.74-1 10 10 0 00-.27-10.44zm-9.79 6.84a2 2 0 002.83 0l5.66-8.49-8.49 5.66a2 2 0 000 2.83z"/></svg>
+                        </div>
+                        <div id="speedometer" class="speedometer-container"></div>
+                    </div>
+
+                    <!-- Battery -->
+                    <div class="card">
+                        <div class="card-header">
+                            <span class="card-title">Battery</span>
+                            <svg class="card-icon" viewBox="0 0 24 24"><path d="M15.67 4H14V2h-4v2H8.33C7.6 4 7 4.6 7 5.33v15.33C7 21.4 7.6 22 8.33 22h7.33c.74 0 1.34-.6 1.34-1.33V5.33C17 4.6 16.4 4 15.67 4z"/></svg>
+                        </div>
+                        <div class="battery-container">
+                            <div class="battery-bar-outer">
+                                <div id="batteryBar" class="battery-bar-inner" style="width: 0%"></div>
+                            </div>
+                            <div class="battery-stats">
+                                <span id="batteryPercent" class="battery-percent">0%</span>
+                                <span id="batteryVoltage" class="battery-voltage">0.0V</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Temperature -->
+                    <div class="card">
+                        <div class="card-header">
+                            <span class="card-title">Temperature</span>
+                            <svg class="card-icon" viewBox="0 0 24 24"><path d="M15 13V5c0-1.66-1.34-3-3-3S9 3.34 9 5v8c-1.21.91-2 2.37-2 4 0 2.76 2.24 5 5 5s5-2.24 5-5c0-1.63-.79-3.09-2-4zm-4-8c0-.55.45-1 1-1s1 .45 1 1h-1v1h1v2h-1v1h1v2h-2V5z"/></svg>
+                        </div>
+                        <div class="temp-row">
+                            <span class="temp-label">Motor</span>
+                            <div class="temp-bar-outer">
+                                <div id="tempBar-motor" class="temp-bar-inner" style="width: 0%"></div>
+                            </div>
+                            <span id="temp-motor" class="temp-value">0.0°C</span>
+                        </div>
+                        <div class="temp-row">
+                            <span class="temp-label">Controller</span>
+                            <div class="temp-bar-outer">
+                                <div id="tempBar-controller" class="temp-bar-inner" style="width: 0%"></div>
+                            </div>
+                            <span id="temp-controller" class="temp-value">0.0°C</span>
+                        </div>
+                        <div class="temp-row">
+                            <span class="temp-label">Battery</span>
+                            <div class="temp-bar-outer">
+                                <div id="tempBar-battery" class="temp-bar-inner" style="width: 0%"></div>
+                            </div>
+                            <span id="temp-battery" class="temp-value">0.0°C</span>
+                        </div>
+                    </div>
+
+                    <!-- Stats -->
+                    <div class="card" style="grid-column: 1 / -1;">
+                        <div class="card-header">
+                            <span class="card-title">Ride Statistics</span>
+                        </div>
+                        <div class="grid-3">
+                            <div class="stat-item">
+                                <div id="stat-odometer" class="stat-value">0.0 km</div>
+                                <div class="stat-label">Odometer</div>
+                            </div>
+                            <div class="stat-item">
+                                <div id="stat-trip" class="stat-value">0.0 km</div>
+                                <div class="stat-label">Trip</div>
+                            </div>
+                            <div class="stat-item">
+                                <div id="stat-current" class="stat-value">0.0 A</div>
+                                <div class="stat-label">Current</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ============ MODIFICATIONS VIEW ============ -->
+            <div id="view-mods" class="view-panel">
+
+                <h2 class="section-title">Region & Speed</h2>
+
+                <div class="card mb-16">
+                    <div class="card-header">
+                        <span class="card-title">Region Selector</span>
+                    </div>
+                    <div class="region-grid">
+                        <div class="region-card active" data-region="1">
+                            <div class="region-flag">🇩🇪</div>
+                            <div class="region-name">Germany</div>
+                            <div class="region-speed">20 km/h</div>
+                        </div>
+                        <div class="region-card" data-region="2">
+                            <div class="region-flag">🇪🇺</div>
+                            <div class="region-name">Europe</div>
+                            <div class="region-speed">25 km/h</div>
+                        </div>
+                        <div class="region-card" data-region="3">
+                            <div class="region-flag">🇺🇸</div>
+                            <div class="region-name">USA</div>
+                            <div class="region-speed">30 km/h</div>
+                        </div>
+                        <div class="region-card" data-region="4">
+                            <div class="region-flag">🇨🇳</div>
+                            <div class="region-name">China</div>
+                            <div class="region-speed">25 km/h</div>
+                        </div>
+                        <div class="region-card" data-region="0">
+                            <div class="region-flag">🏴‍☠️</div>
+                            <div class="region-name">Unrestricted</div>
+                            <div class="region-speed">NO LIMIT</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card mb-16">
+                    <div class="card-header">
+                        <span class="card-title">Speed Limit</span>
+                    </div>
+                    <div class="slider-group">
+                        <div class="slider-header">
+                            <span class="slider-label">Maximum Speed</span>
+                            <span id="speedLimitValue" class="slider-value">20</span>
+                        </div>
+                        <input type="range" id="speedLimitSlider" min="0" max="50" value="20" step="1">
+                        <div class="speed-presets">
+                            <button class="speed-preset active" data-speed="20">🇩🇪 20</button>
+                            <button class="speed-preset" data-speed="25">🇪🇺 25</button>
+                            <button class="speed-preset" data-speed="30">🇺🇸 30</button>
+                            <button class="speed-preset" data-speed="35">35</button>
+                            <button class="speed-preset" data-speed="0">∞ No Limit</button>
+                        </div>
+                    </div>
+                </div>
+
+                <h2 class="section-title">Ride Settings</h2>
+
+                <div class="card mb-16">
+                    <div class="toggle-row">
+                        <div class="toggle-info">
+                            <span class="toggle-label">Cruise Control</span>
+                            <span class="toggle-desc">Maintain speed without throttle input</span>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="toggleCruise">
+                            <span class="toggle-track"></span>
+                        </label>
+                    </div>
+                    <div class="toggle-row">
+                        <div class="toggle-info">
+                            <span class="toggle-label">Headlight</span>
+                            <span class="toggle-desc">Toggle the front LED headlight</span>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="toggleLight">
+                            <span class="toggle-track"></span>
+                        </label>
+                    </div>
+                    <div class="toggle-row">
+                        <div class="toggle-info">
+                            <span class="toggle-label">Anti-Theft Lock</span>
+                            <span class="toggle-desc">Lock the motor — scooter will beep if moved</span>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="toggleLock">
+                            <span class="toggle-track"></span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="card mb-16">
+                    <div class="slider-group">
+                        <div class="slider-header">
+                            <span class="slider-label">KERS (Regen Braking)</span>
+                            <span id="kersValue" class="slider-value">Medium</span>
+                        </div>
+                        <input type="range" id="kersSlider" min="0" max="3" value="2" step="1">
+                    </div>
+                </div>
+
+                <div class="card mb-16">
+                    <div class="card-header">
+                        <span class="card-title">Secret Handshake (Physical Trigger)</span>
+                    </div>
+                    <div class="toggle-row">
+                        <div class="toggle-info">
+                            <span class="toggle-label">Enable Secret Handshake</span>
+                            <span class="toggle-desc">Hold physical Brake + Throttle for 2 seconds to unlock custom profile</span>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="toggleHandshake">
+                            <span class="toggle-track"></span>
+                        </label>
+                    </div>
+                    <div class="toggle-row" style="border-top: 1px solid var(--border-glass); padding-top: 12px; margin-top: 12px; align-items: center;">
+                        <div class="toggle-info">
+                            <span class="toggle-label">Handshake Status</span>
+                            <span class="toggle-desc" style="color: var(--text-muted);">Test in Demo Mode by holding keyboard keys <strong>B</strong> (Brake) and <strong>T</strong> (Throttle)</span>
+                        </div>
+                        <span id="handshakeStatusBadge" class="error-severity-badge unknown" style="padding: 4px 10px; border-radius: 4px; font-weight: 600; font-size: 0.72rem; font-family: var(--font-mono);">WAITING</span>
+                    </div>
+                </div>
+
+                <h2 class="section-title">Advanced</h2>
+
+                <div class="card mb-16">
+                    <div class="slider-group">
+                        <div class="slider-header">
+                            <span class="slider-label">Acceleration Curve</span>
+                            <span id="accelCurveValue" class="slider-value">Normal</span>
+                        </div>
+                        <input type="range" id="accelCurveSlider" min="0" max="3" value="1" step="1">
+                    </div>
+
+                    <div class="slider-group">
+                        <div class="slider-header">
+                            <span class="slider-label">Motor Current Limit</span>
+                            <span id="motorLimitValue" class="slider-value">20A</span>
+                        </div>
+                        <input type="range" id="motorLimitSlider" min="5" max="35" value="20" step="1">
+                    </div>
+
+                    <div class="slider-group">
+                        <div class="slider-header">
+                            <span class="slider-label">Startup Speed</span>
+                            <span id="startupSpeedValue" class="slider-value">5 km/h</span>
+                        </div>
+                        <input type="range" id="startupSpeedSlider" min="0" max="10" value="5" step="1">
+                    </div>
+                </div>
+
+                <!-- Flash Button -->
+                <div class="flash-container">
+                    <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
+                        <div>
+                            <button id="btnApplyMods" class="btn btn-flash">⚡ Flash Modifications</button>
+                        </div>
+                        <div class="profile-actions">
+                            <button id="btnExport" class="btn">📤 Export Profile</button>
+                            <button id="btnImport" class="btn">📥 Import Profile</button>
+                            <input type="file" id="importFile" accept=".json">
+                        </div>
+                    </div>
+                    <div class="flash-progress-outer mt-16">
+                        <div id="flashProgress" class="flash-progress-inner"></div>
+                    </div>
+                    <div id="flashStatus" class="flash-status">Ready to flash</div>
+                </div>
+            </div>
+
+            <!-- ============ TERMINAL VIEW ============ -->
+            <div id="view-terminal" class="view-panel">
+
+                <h2 class="section-title">Raw BLE Terminal</h2>
+
+                <div class="terminal-container">
+                    <div class="terminal-header">
+                        <div class="terminal-dots">
+                            <span class="terminal-dot red"></span>
+                            <span class="terminal-dot yellow"></span>
+                            <span class="terminal-dot green"></span>
+                        </div>
+                        <span class="terminal-title">navee@ble:~</span>
+                        <span class="terminal-title" style="color: var(--text-muted);">Send raw hex packets</span>
+                    </div>
+                    <div id="terminalOutput" class="terminal-output">
+                        <div class="terminal-entry info">
+                            <span class="terminal-data" style="color: var(--text-muted);">// NaveeHack Terminal — Enter hex bytes to send (e.g., 5A 01 00 XX XX)</span>
+                        </div>
+                        <div class="terminal-entry info">
+                            <span class="terminal-data" style="color: var(--text-muted);">// Use quick commands below or type raw hex</span>
+                        </div>
+                    </div>
+                    <div class="terminal-input-row">
+                        <span class="terminal-prompt">&gt;</span>
+                        <input id="terminalInput" class="terminal-input" type="text" placeholder="Enter hex bytes (e.g., 5A 10 00 ...)" spellcheck="false" autocomplete="off">
+                        <button id="btnTerminalSend" class="terminal-send-btn">SEND</button>
+                    </div>
+                </div>
+
+                <div class="quick-commands mt-16">
+                    <span style="font-size: 0.72rem; color: var(--text-muted); margin-right: 8px;">Quick:</span>
+                    <button class="quick-cmd" data-cmd="5A 01 00" title="Ping">PING</button>
+                    <button class="quick-cmd" data-cmd="5A 10 00" title="Read Speed">SPEED</button>
+                    <button class="quick-cmd" data-cmd="5A 11 00" title="Read Battery">BATTERY</button>
+                    <button class="quick-cmd" data-cmd="5A 12 00" title="Read Odometer">ODO</button>
+                    <button class="quick-cmd" data-cmd="5A 13 00" title="Read Temperature">TEMP</button>
+                    <button class="quick-cmd" data-cmd="5A 14 00" title="Read Firmware">FW VER</button>
+                    <button class="quick-cmd" data-cmd="5A 15 00" title="Read Serial">SERIAL</button>
+                    <button class="quick-cmd" data-cmd="5A 16 00" title="Read Error">ERROR</button>
+                    <button class="quick-cmd" data-cmd="5A 17 00" title="Read Settings">SETTINGS</button>
+                </div>
+
+                <div class="card mt-24">
+                    <div class="card-header">
+                        <span class="card-title">Protocol Reference</span>
+                    </div>
+                    <div style="font-family: var(--font-mono); font-size: 0.72rem; color: var(--text-secondary); line-height: 1.8;">
+                        <div>Packet: <span style="color: var(--accent-primary)">[5A]</span> <span style="color: var(--accent-secondary)">[CMD]</span> <span style="color: var(--accent-warn)">[LEN]</span> <span style="color: var(--text-primary)">[PAYLOAD...]</span> <span style="color: var(--accent-tertiary)">[CRC_LO CRC_HI]</span></div>
+                        <div style="margin-top: 6px;">Response uses nibble-swapped CMD (e.g., 0x10 → 0x01)</div>
+                        <div>CRC-16 Modbus over CMD + LEN + PAYLOAD</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ============ INFO VIEW ============ -->
+            <div id="view-info" class="view-panel">
+
+                <h2 class="section-title">Scooter Information</h2>
+
+                <div class="info-grid mb-24">
+                    <div class="info-item">
+                        <div class="info-label">Device Name</div>
+                        <div id="infoDeviceName" class="info-value">—</div>
+                    </div>
+                    <div class="info-item">
+                        <div class="info-label">Firmware Version</div>
+                        <div id="firmwareVersion" class="info-value">—</div>
+                    </div>
+                    <div class="info-item">
+                        <div class="info-label">Serial Number</div>
+                        <div id="serialNumber" class="info-value">—</div>
+                    </div>
+                    <div class="info-item">
+                        <div class="info-label">BLE Service</div>
+                        <div id="bleServiceType" class="info-value">—</div>
+                    </div>
+                </div>
+
+                <h2 class="section-title">Supported Models</h2>
+
+                <div class="card mb-16">
+                    <table style="width: 100%; border-collapse: collapse; font-size: 0.82rem;">
+                        <thead>
+                            <tr style="border-bottom: 1px solid var(--border-glass);">
+                                <th style="padding: 10px; text-align: left; color: var(--text-muted); font-weight: 500;">Model</th>
+                                <th style="padding: 10px; text-align: left; color: var(--text-muted); font-weight: 500;">Motor</th>
+                                <th style="padding: 10px; text-align: left; color: var(--text-muted); font-weight: 500;">Range</th>
+                                <th style="padding: 10px; text-align: center; color: var(--text-muted); font-weight: 500;">ABE 🇩🇪</th>
+                            </tr>
+                        </thead>
+                        <tbody style="font-family: var(--font-mono);">
+                            <tr style="border-bottom: 1px solid rgba(255,255,255,0.02);">
+                                <td style="padding: 10px; color: var(--accent-primary);">GT3</td>
+                                <td style="padding: 10px;">350W</td>
+                                <td style="padding: 10px;">40 km</td>
+                                <td style="padding: 10px; text-align: center;">✅</td>
+                            </tr>
+                            <tr style="border-bottom: 1px solid rgba(255,255,255,0.02);">
+                                <td style="padding: 10px; color: var(--accent-primary);">GT3 Pro</td>
+                                <td style="padding: 10px;">400W</td>
+                                <td style="padding: 10px;">65 km</td>
+                                <td style="padding: 10px; text-align: center;">✅</td>
+                            </tr>
+                            <tr style="border-bottom: 1px solid rgba(255,255,255,0.02);">
+                                <td style="padding: 10px; color: var(--accent-primary);">GT5 Max</td>
+                                <td style="padding: 10px;">500W</td>
+                                <td style="padding: 10px;">70 km</td>
+                                <td style="padding: 10px; text-align: center;">✅</td>
+                            </tr>
+                            <tr style="border-bottom: 1px solid rgba(255,255,255,0.02);">
+                                <td style="padding: 10px; color: var(--accent-primary);">N65</td>
+                                <td style="padding: 10px;">500W</td>
+                                <td style="padding: 10px;">65 km</td>
+                                <td style="padding: 10px; text-align: center;">❌</td>
+                            </tr>
+                            <tr style="border-bottom: 1px solid rgba(255,255,255,0.02);">
+                                <td style="padding: 10px; color: var(--accent-primary);">N65i</td>
+                                <td style="padding: 10px;">1000W</td>
+                                <td style="padding: 10px;">65 km</td>
+                                <td style="padding: 10px; text-align: center;">✅</td>
+                            </tr>
+                            <tr style="border-bottom: 1px solid rgba(255,255,255,0.02);">
+                                <td style="padding: 10px; color: var(--accent-primary);">S65</td>
+                                <td style="padding: 10px;">1000W</td>
+                                <td style="padding: 10px;">65 km</td>
+                                <td style="padding: 10px; text-align: center;">❌</td>
+                            </tr>
+                            <tr style="border-bottom: 1px solid rgba(255,255,255,0.02);">
+                                <td style="padding: 10px; color: var(--accent-primary);">V50</td>
+                                <td style="padding: 10px;">350W</td>
+                                <td style="padding: 10px;">50 km</td>
+                                <td style="padding: 10px; text-align: center;">✅</td>
+                            </tr>
+                            <tr style="border-bottom: 1px solid rgba(255,255,255,0.02);">
+                                <td style="padding: 10px; color: var(--accent-primary);">S60</td>
+                                <td style="padding: 10px;">1000W</td>
+                                <td style="padding: 10px;">60 km</td>
+                                <td style="padding: 10px; text-align: center;">✅</td>
+                            </tr>
+                            <tr style="border-bottom: 1px solid rgba(255,255,255,0.02);">
+                                <td style="padding: 10px; color: var(--accent-primary);">ST3 Pro</td>
+                                <td style="padding: 10px;">1000W</td>
+                                <td style="padding: 10px;">75 km</td>
+                                <td style="padding: 10px; text-align: center;">✅</td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 10px; color: var(--accent-primary);">ST5 Ultra</td>
+                                <td style="padding: 10px;">1400W</td>
+                                <td style="padding: 10px;">90 km</td>
+                                <td style="padding: 10px; text-align: center;">✅</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <h2 class="section-title">BLE Protocol Details</h2>
+
+                <div class="card">
+                    <div style="font-family: var(--font-mono); font-size: 0.78rem; line-height: 1.8; color: var(--text-secondary);">
+                        <div><span style="color: var(--text-muted);">Service:</span> <span style="color: var(--accent-primary);">6e400001-b5a3-f393-e0a9-e50e24dcca9e</span></div>
+                        <div><span style="color: var(--text-muted);">TX (Notify):</span> <span style="color: var(--accent-secondary);">6e400003-b5a3-f393-e0a9-e50e24dcca9e</span></div>
+                        <div><span style="color: var(--text-muted);">RX (Write):</span> <span style="color: var(--accent-tertiary);">6e400002-b5a3-f393-e0a9-e50e24dcca9e</span></div>
+                        <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border-glass);">
+                            <span style="color: var(--text-muted);">Fallback:</span> <span style="color: var(--text-primary);">FFE0 / FFE1</span>
+                        </div>
+                        <div><span style="color: var(--text-muted);">Internal UART:</span> 19200 baud, 8N1</div>
+                        <div><span style="color: var(--text-muted);">Packet Header:</span> <span style="color: var(--accent-primary);">0x5A</span></div>
+                        <div><span style="color: var(--text-muted);">CRC:</span> CRC-16 Modbus (poly 0xA001)</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ============ BLE SCANNER VIEW ============ -->
+            <div id="view-scanner" class="view-panel">
+
+                <h2 class="section-title">BLE Service Explorer</h2>
+
+                <div class="card mb-16">
+                    <div class="card-header">
+                        <span class="card-title">GATT Services & Characteristics</span>
+                        <button id="btnScanServices" class="btn btn-primary" style="font-size: 0.78rem; padding: 6px 14px;">🔍 Scan Services</button>
+                    </div>
+                    <p style="font-size: 0.78rem; color: var(--text-muted); margin-bottom: 12px;">Discover all BLE services and characteristics on the connected device — like nRF Connect but in your browser.</p>
+                    <div id="servicesList" class="services-list">
+                        <div class="scanner-empty">Connect to a scooter and click "Scan Services" to discover GATT attributes.</div>
+                    </div>
+                </div>
+
+                <div class="card mb-16">
+                    <div class="card-header">
+                        <span class="card-title">Characteristic Inspector</span>
+                    </div>
+                    <div class="grid-2">
+                        <div>
+                            <label class="slider-label">UUID</label>
+                            <input type="text" id="charInspectUUID" class="text-input" placeholder="e.g. 6e400003-b5a3-..." readonly>
+                        </div>
+                        <div>
+                            <label class="slider-label">Properties</label>
+                            <input type="text" id="charInspectProps" class="text-input" placeholder="read, write, notify..." readonly>
+                        </div>
+                    </div>
+                    <div class="mt-16">
+                        <label class="slider-label">Value (Hex)</label>
+                        <div style="display: flex; gap: 8px;">
+                            <input type="text" id="charInspectValue" class="text-input" placeholder="Read value will appear here" style="flex:1">
+                            <button id="btnCharRead" class="btn" style="font-size: 0.78rem;">Read</button>
+                            <button id="btnCharWrite" class="btn btn-primary" style="font-size: 0.78rem;">Write</button>
+                            <button id="btnCharNotify" class="btn" style="font-size: 0.78rem;">Subscribe</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">Packet Logger</span>
+                        <div style="display:flex; gap: 6px;">
+                            <button id="btnLoggerClear" class="btn" style="font-size: 0.72rem; padding: 4px 10px;">Clear</button>
+                            <button id="btnLoggerExport" class="btn" style="font-size: 0.72rem; padding: 4px 10px;">📤 Export CSV</button>
+                        </div>
+                    </div>
+                    <div id="packetLogOutput" class="terminal-output" style="height: 200px; font-size: 0.72rem;">
+                        <div style="color: var(--text-muted);">// Packet log — all BLE traffic will be recorded here</div>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 12px; margin-top: 8px;">
+                        <span style="font-size: 0.72rem; color: var(--text-muted);">Packets: <span id="packetCount">0</span></span>
+                        <span style="font-size: 0.72rem; color: var(--text-muted);">TX: <span id="packetTxCount" style="color: var(--accent-secondary);">0</span></span>
+                        <span style="font-size: 0.72rem; color: var(--text-muted);">RX: <span id="packetRxCount" style="color: var(--accent-primary);">0</span></span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ============ SPEED GRAPH VIEW ============ -->
+            <div id="view-graph" class="view-panel">
+
+                <h2 class="section-title">Live Speed Graph</h2>
+
+                <div class="card mb-16">
+                    <div class="card-header">
+                        <span class="card-title">Speed Over Time</span>
+                        <div style="display: flex; gap: 6px; align-items: center;">
+                            <button id="btnGraphClear" class="btn" style="font-size: 0.72rem; padding: 4px 10px;">Clear</button>
+                            <button id="btnGraphExport" class="btn" style="font-size: 0.72rem; padding: 4px 10px;">📤 Export</button>
+                        </div>
+                    </div>
+                    <div class="graph-container">
+                        <canvas id="speedCanvas" width="800" height="280"></canvas>
+                    </div>
+                    <div class="grid-4 mt-16">
+                        <div class="stat-item">
+                            <div id="graphCurrentSpeed" class="stat-value" style="color: var(--accent-primary);">0.0</div>
+                            <div class="stat-label">Current (km/h)</div>
+                        </div>
+                        <div class="stat-item">
+                            <div id="graphMaxSpeed" class="stat-value" style="color: var(--accent-danger);">0.0</div>
+                            <div class="stat-label">Max (km/h)</div>
+                        </div>
+                        <div class="stat-item">
+                            <div id="graphAvgSpeed" class="stat-value" style="color: var(--accent-secondary);">0.0</div>
+                            <div class="stat-label">Avg (km/h)</div>
+                        </div>
+                        <div class="stat-item">
+                            <div id="graphDuration" class="stat-value" style="color: var(--accent-warn);">0:00</div>
+                            <div class="stat-label">Duration</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">Power & Efficiency</span>
+                    </div>
+                    <div class="grid-3">
+                        <div class="stat-item">
+                            <div id="graphPower" class="stat-value">0 W</div>
+                            <div class="stat-label">Power Draw</div>
+                        </div>
+                        <div class="stat-item">
+                            <div id="graphEfficiency" class="stat-value">— Wh/km</div>
+                            <div class="stat-label">Efficiency</div>
+                        </div>
+                        <div class="stat-item">
+                            <div id="graphEstRange" class="stat-value">— km</div>
+                            <div class="stat-label">Est. Range Left</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ============ BATTERY HEALTH VIEW ============ -->
+            <div id="view-battery" class="view-panel">
+
+                <h2 class="section-title">Battery Health Monitor</h2>
+
+                <div class="card mb-16">
+                    <div class="card-header">
+                        <span class="card-title">Battery Overview</span>
+                    </div>
+                    <div class="grid-4">
+                        <div class="stat-item">
+                            <div id="bhSoc" class="stat-value" style="color: var(--accent-primary);">—%</div>
+                            <div class="stat-label">State of Charge</div>
+                        </div>
+                        <div class="stat-item">
+                            <div id="bhVoltage" class="stat-value">— V</div>
+                            <div class="stat-label">Pack Voltage</div>
+                        </div>
+                        <div class="stat-item">
+                            <div id="bhCurrent" class="stat-value">— A</div>
+                            <div class="stat-label">Current</div>
+                        </div>
+                        <div class="stat-item">
+                            <div id="bhHealth" class="stat-value" style="color: var(--accent-success);">—%</div>
+                            <div class="stat-label">Est. Health</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card mb-16">
+                    <div class="card-header">
+                        <span class="card-title">Cell Voltages (Estimated)</span>
+                    </div>
+                    <div id="cellVoltageGrid" class="cell-voltage-grid">
+                        <!-- Generated by JS -->
+                    </div>
+                    <div style="margin-top: 12px; display: flex; justify-content: space-between; font-size: 0.72rem; color: var(--text-muted);">
+                        <span>Min: <span id="bhCellMin" style="color: var(--accent-danger);">—</span></span>
+                        <span>Avg: <span id="bhCellAvg" style="color: var(--text-primary);">—</span></span>
+                        <span>Max: <span id="bhCellMax" style="color: var(--accent-success);">—</span></span>
+                        <span>Diff: <span id="bhCellDiff" style="color: var(--accent-warn);">—</span></span>
+                    </div>
+                </div>
+
+                <div class="card mb-16">
+                    <div class="card-header">
+                        <span class="card-title">Charge Cycle Tracker</span>
+                    </div>
+                    <div class="grid-3">
+                        <div class="stat-item">
+                            <div id="bhCycles" class="stat-value">—</div>
+                            <div class="stat-label">Est. Cycles</div>
+                        </div>
+                        <div class="stat-item">
+                            <div id="bhCapacity" class="stat-value">— Wh</div>
+                            <div class="stat-label">Pack Capacity</div>
+                        </div>
+                        <div class="stat-item">
+                            <div id="bhRemaining" class="stat-value">— Wh</div>
+                            <div class="stat-label">Energy Remaining</div>
+                        </div>
+                    </div>
+                    <div class="charge-history mt-16">
+                        <canvas id="chargeCanvas" width="800" height="150"></canvas>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">Error Code Decoder</span>
+                    </div>
+                    <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+                        <input type="text" id="errorCodeInput" class="text-input" placeholder="Enter error code (e.g. 0x14 or 20)" style="flex:1">
+                        <button id="btnDecodeError" class="btn btn-primary" style="font-size: 0.78rem;">Decode</button>
+                        <button id="btnReadError" class="btn" style="font-size: 0.78rem;">Read from Scooter</button>
+                    </div>
+                    <div id="errorDecodeResult" class="error-decode-result">
+                        <div style="color: var(--text-muted); font-size: 0.78rem;">Enter an error code or read from scooter to decode.</div>
+                    </div>
+                    <details class="mt-16" style="font-size: 0.78rem;">
+                        <summary style="cursor: pointer; color: var(--accent-secondary); font-weight: 500;">Full Error Code Reference</summary>
+                        <div id="errorCodeTable" class="mt-16" style="font-family: var(--font-mono); line-height: 1.8; color: var(--text-secondary);">
+                            <!-- Generated by JS -->
+                        </div>
+                    </details>
+                </div>
+            </div>
+
+            <!-- ============ RIDE TRACKER VIEW ============ -->
+            <div id="view-ride" class="view-panel">
+
+                <h2 class="section-title">Ride Tracker</h2>
+
+                <div class="card mb-16">
+                    <div class="card-header">
+                        <span class="card-title">GPS Ride Recording</span>
+                        <div style="display: flex; gap: 6px;">
+                            <button id="btnRideStart" class="btn btn-primary" style="font-size: 0.78rem;">▶ Start Tracking</button>
+                            <button id="btnRideStop" class="btn btn-danger" style="font-size: 0.78rem; display: none;">■ Stop</button>
+                            <button id="btnRideExport" class="btn" style="font-size: 0.78rem;">📤 Export GPX</button>
+                        </div>
+                    </div>
+                    <div class="grid-4">
+                        <div class="stat-item">
+                            <div id="rideDistance" class="stat-value" style="color: var(--accent-primary);">0.00 km</div>
+                            <div class="stat-label">Distance</div>
+                        </div>
+                        <div class="stat-item">
+                            <div id="rideSpeed" class="stat-value">0.0 km/h</div>
+                            <div class="stat-label">GPS Speed</div>
+                        </div>
+                        <div class="stat-item">
+                            <div id="rideMaxSpeed" class="stat-value" style="color: var(--accent-danger);">0.0 km/h</div>
+                            <div class="stat-label">Max Speed</div>
+                        </div>
+                        <div class="stat-item">
+                            <div id="rideDuration" class="stat-value" style="color: var(--accent-warn);">0:00:00</div>
+                            <div class="stat-label">Duration</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card mb-16">
+                    <div class="card-header">
+                        <span class="card-title">GPS Position</span>
+                    </div>
+                    <div class="grid-3">
+                        <div class="stat-item">
+                            <div id="rideLat" class="stat-value" style="font-size: 0.95rem;">—</div>
+                            <div class="stat-label">Latitude</div>
+                        </div>
+                        <div class="stat-item">
+                            <div id="rideLng" class="stat-value" style="font-size: 0.95rem;">—</div>
+                            <div class="stat-label">Longitude</div>
+                        </div>
+                        <div class="stat-item">
+                            <div id="rideAltitude" class="stat-value" style="font-size: 0.95rem;">—</div>
+                            <div class="stat-label">Altitude</div>
+                        </div>
+                    </div>
+                    <div class="gps-accuracy mt-16">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <span class="slider-label">GPS Accuracy</span>
+                            <span id="rideAccuracy" style="font-family: var(--font-mono); font-size: 0.82rem; color: var(--accent-primary);">— m</span>
+                        </div>
+                        <div class="battery-bar-outer" style="height: 6px; margin-top: 6px;">
+                            <div id="rideAccuracyBar" class="battery-bar-inner" style="width: 0%; background: var(--accent-primary);"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card mb-16">
+                    <div class="card-header">
+                        <span class="card-title">Speed Profile</span>
+                    </div>
+                    <div class="graph-container">
+                        <canvas id="rideSpeedCanvas" width="800" height="180"></canvas>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">Ride History</span>
+                        <button id="btnRideClearHistory" class="btn" style="font-size: 0.72rem; padding: 4px 10px;">Clear All</button>
+                    </div>
+                    <div id="rideHistory" style="max-height: 200px; overflow-y: auto;">
+                        <div style="color: var(--text-muted); font-size: 0.78rem;">No rides recorded yet. Start tracking to begin.</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ============ LOG VIEW ============ -->
+            <div id="view-log" class="view-panel">
+
+                <h2 class="section-title">Event Log</h2>
+
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">System Events</span>
+                        <button class="btn" onclick="document.getElementById('logOutput').innerHTML = ''" style="font-size: 0.72rem; padding: 4px 10px;">Clear</button>
+                    </div>
+                    <div id="logOutput" class="log-output">
+                        <div class="log-entry info"><span class="log-time">[--:--:--]</span> NaveeHack initialized. Waiting for BLE connection...</div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </main>
+</div>
+
+<!-- Scripts (order matters) -->
+<script src="js/protocol.js"></script>
+<script src="js/ble.js"></script>
+<script src="js/dashboard.js"></script>
+<script src="js/mods.js"></script>
+<script src="js/scanner.js"></script>
+<script src="js/speedgraph.js"></script>
+<script src="js/batteryhealth.js"></script>
+<script src="js/ridetracker.js"></script>
+<script src="js/panic.js"></script>
+<script src="js/app.js"></script>
+
+</body>
+</html>
