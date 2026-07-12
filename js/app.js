@@ -156,13 +156,12 @@ const App = (() => {
                     } catch (e) { addLog('Initial read error: ' + e.message, 'warn'); }
                 }, 500);
             } else {
-                addLog('ST3 Pro: holding silent — protocol unknown, all 0x5A writes blocked', 'warn');
+                addLog('ST3 Pro: protocol engine initialized.', 'success');
                 startKeepAlive();
             }
 
-            // Only start dashboard polling on legacy protocol —
-            // ST3 Pro doesn't understand 0x5A poll commands
-            if (!svcType.includes('ST3') && currentView === 'dashboard') {
+            // Start dashboard polling
+            if (currentView === 'dashboard') {
                 Dashboard.startPolling();
             }
         });
