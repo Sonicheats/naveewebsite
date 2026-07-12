@@ -325,3 +325,102 @@ const NaveeProtocol = (() => {
         fromHexString,
     };
 })();
+
+// ============================================================
+// ST3 Pro Protocol Engine
+// Native Go Navee Protocol for ST3 Pro / D0FF hardware
+// ============================================================
+const ST3Protocol = (() => {
+    const HEADER_0 = 0x55;
+    const HEADER_1 = 0xAA;
+
+    function checksum(data) {
+        let sum = 0;
+        for (let i = 0; i < data.length; i++) {
+            sum += data[i] & 0xFF;
+        }
+        return sum & 0xFF;
+    }
+
+    // Command without payload (e.g. read requests)
+    function buildReadCommand(cmd) {
+        // [55] [AA] [isEnc=0] [CMD]
+        const base = new Uint8Array([HEADER_0, HEADER_1, 0x00, cmd]);
+        const cs = checksum(base);
+        // [CSUM] [FE] [FD]
+        return new Uint8Array([...base, cs, 0xFE, 0xFD]);
+    }
+
+    // Command with payload (e.g. settings)
+    function buildWriteCommand(cmd, payload) {
+        // [55] [AA] [isEnc=0] [CMD] [LEN] [PAYLOAD...]
+        const base = new Uint8Array([HEADER_0, HEADER_1, 0x00, cmd, payload.length, ...payload]);
+        const cs = checksum(base);
+        return new Uint8Array([...base, cs, 0xFE, 0xFD]);
+    }
+
+    function extractFrames(buffer) {
+        const frames = [];
+        let i = 0;
+
+        while (i < buffer.length - 6) {
+            if (buffer[i] !== HEADER_0 || buffer[i + 1] !== HEADER_1) {
+                i++;
+                continue;
+            }
+
+            const len = buffer[i + 4]; // Payload + error byte length
+            const frameLen = len + 8; // 4 header + 1 len + payload len + 3 footer
+
+            if (i + frameLen > buffer.length) break;
+
+            if (buffer[i + frameLen - 2] === 0xFE && buffer[i + frameLen - 1] === 0xFD) {
+                frames.push(buffer.slice(i, i + frameLen));
+                i += frameLen;
+            } else {
+                i++;
+            }
+        }
+
+        const remainder = i < buffer.length ? buffer.slice(i) : new Uint8Array(0);
+        return { frames, remainder };
+    }
+
+    function parseResponse(data) {
+        if (data.length < 8) return { valid: false };
+        const len = data[4];
+        if (data.length !== len + 8) return { valid: false };
+
+        const calcCsum = checksum(data.slice(0, data.length - 3));
+        const recvCsum = data[data.length - 3];
+        if (calcCsum !== recvCsum) return { valid: false, errorStr: 'Checksum mismatch' };
+
+        const cmd = data[3];
+        const error = data[5];
+        const payload = data.slice(6, data.length - 3);
+
+        return {
+            valid: true,
+            command: cmd,
+            commandHex: `0x${cmd.toString(16).padStart(2, '0')}`,
+            error: error,
+            payload: Array.from(payload),
+            raw: data
+        };
+    }
+
+    return {
+        buildReadCommand,
+        buildWriteCommand,
+        extractFrames,
+        parseResponse,
+        CMD: {
+            READ_VEHICLE: 0x70, // 112
+            READ_BATTERY: 0x72, // 114
+            READ_DRIVE:   0x71, // 113
+            REPORT_HOME:  0x90, // 144
+            REPORT_SUB1:  0x91, // 145
+            REPORT_SUB2:  0x92, // 146
+        }
+    };
+})();
