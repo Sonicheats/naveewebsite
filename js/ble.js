@@ -601,24 +601,77 @@ const NaveeBLE = (() => {
     function flushRxBuffer(force) {
         if (rxBuffer.length === 0) return;
 
-        const { frames, remainder } = NaveeProtocol.extractFrames(rxBuffer);
+        const Protocol = st3Mode ? ST3Protocol : NaveeProtocol;
+        const { frames, remainder } = Protocol.extractFrames(rxBuffer);
 
         for (const frame of frames) {
             const hex = NaveeProtocol.toHexString(frame);
             log(`← RX packet: ${hex}`);
-            const parsed = NaveeProtocol.parseResponse(frame);
-            emit('data', { raw: frame, hex, parsed });
+            const parsed = Protocol.parseResponse(frame);
+            
+            if (st3Mode) {
+                if (parsed.valid && parsed.error === 0) {
+                    processST3Telemetry(parsed);
+                } else if (parsed.valid) {
+                    log(`⚠ ST3 Error ${parsed.error} on CMD ${parsed.commandHex}`, 'warn');
+                }
+            } else {
+                emit('data', { raw: frame, hex, parsed });
+            }
         }
 
         if (force && remainder.length > 0) {
             // Force-parse whatever's left as a best-effort packet
             const hex = NaveeProtocol.toHexString(remainder);
             log(`← RX remainder (forced): ${hex}`);
-            const parsed = NaveeProtocol.parseResponse(remainder);
-            emit('data', { raw: remainder, hex, parsed });
+            const parsed = Protocol.parseResponse(remainder);
+            if (!st3Mode) {
+                emit('data', { raw: remainder, hex, parsed });
+            }
             rxBuffer = new Uint8Array(0);
         } else {
             rxBuffer = remainder;
+        }
+    }
+
+    function processST3Telemetry(parsed) {
+        const p = parsed.payload;
+        const eventData = {};
+
+        if (parsed.command === 0x90 || parsed.command === 0x70) {
+            // Vehicle / Home Report
+            if (p.length >= 8) {
+                eventData.speedMode = p[1]; // 0=Pedestrian, 1=Drive, 2=Sport, 3=Custom
+                eventData.batteryPercent = p[2];
+                eventData.isCharging = p[4] === 1;
+                eventData.locked = p[7] ? p[7] - 1 : 0;
+            }
+        } else if (parsed.command === 0x91) {
+            // Subpage 1
+            if (p.length >= 9) {
+                eventData.speed = p[2];
+                eventData.batteryPercent = p[0];
+                eventData.odometer = p[8]; // Partial odometer
+            }
+        } else if (parsed.command === 0x92) {
+            // Subpage 2
+            if (p.length >= 14) {
+                eventData.batteryPercent = p[0];
+                eventData.speed = (p[2] | (p[3]<<8)) / 10;
+                eventData.odometer = (p[12] | (p[13]<<8)) / 10;
+            }
+        } else if (parsed.command === 0x72) {
+            // Battery details
+            if (p.length >= 12) {
+                eventData.batteryPercent = p[1];
+                eventData.voltage = (p[2] | (p[3]<<8) | (p[4]<<16) | (p[5]<<24)) / 1000;
+                eventData.current = (p[6] | (p[7]<<8) | (p[8]<<16) | (p[9]<<24)) / 1000;
+                eventData.batteryTemp = p[11];
+            }
+        }
+
+        if (Object.keys(eventData).length > 0) {
+            emit('telemetry', eventData);
         }
     }
 
@@ -630,12 +683,14 @@ const NaveeBLE = (() => {
             return;
         }
 
-        // ST3 Pro protocol is unknown — sending 0x5A Ninebot commands causes disconnect
-        // Block all writes until the ST3 protocol is reverse-engineered
+        // Prevent legacy Ninebot 0x5A commands from killing the ST3 Pro connection
         if (st3Mode) {
-            const hex = NaveeProtocol.toHexString(data instanceof Uint8Array ? data : new Uint8Array(data));
-            log(`⛔ TX BLOCKED (ST3 Pro — protocol unknown): ${hex}`, 'warn');
-            return;
+            const dataArr = data instanceof Uint8Array ? data : new Uint8Array(data);
+            if (dataArr[0] !== 0x55) {
+                const hex = NaveeProtocol.toHexString(dataArr);
+                log(`⛔ TX BLOCKED (ST3 Pro — invalid legacy write): ${hex}`, 'warn');
+                return;
+            }
         }
 
         if (!connected || !rxChar) {
@@ -755,6 +810,52 @@ const NaveeBLE = (() => {
             }, 50);
 
             return packet;
+        }
+
+        // ST3 Pro Command Translation
+        if (st3Mode) {
+            let st3Cmd, st3Payload = [];
+            switch (command) {
+                case NaveeProtocol.CMD.READ_SPEED:
+                case NaveeProtocol.CMD.READ_ODOMETER:
+                case NaveeProtocol.CMD.READ_ALL_TELEMETRY:
+                    st3Cmd = ST3Protocol.CMD.READ_VEHICLE; // 0x70
+                    break;
+                case NaveeProtocol.CMD.READ_BATTERY:
+                    st3Cmd = ST3Protocol.CMD.READ_BATTERY; // 0x72
+                    break;
+                case NaveeProtocol.CMD.WRITE_SPEED_LIMIT:
+                    st3Cmd = ST3Protocol.CMD.WRITE_SPEED_LIMIT; // 0x6B
+                    st3Payload = [payload[0]];
+                    break;
+                case NaveeProtocol.CMD.WRITE_LIGHT:
+                    st3Cmd = 0x54; // Headlight control
+                    st3Payload = [payload[0]];
+                    break;
+                case NaveeProtocol.CMD.WRITE_LOCK:
+                    st3Cmd = 0x51; // Lock control
+                    st3Payload = [payload[0]];
+                    break;
+                case NaveeProtocol.CMD.WRITE_CRUISE:
+                    st3Cmd = 0x52; // Cruise control
+                    st3Payload = [payload[0]];
+                    break;
+                case NaveeProtocol.CMD.WRITE_KERS:
+                    st3Cmd = 0x53; // Energy recovery
+                    st3Payload = [payload[0]];
+                    break;
+                // Add more mappings as discovered
+            }
+
+            if (st3Cmd) {
+                const packet = st3Payload.length > 0 
+                    ? ST3Protocol.buildWriteCommand(st3Cmd, st3Payload) 
+                    : ST3Protocol.buildReadCommand(st3Cmd);
+                return write(packet);
+            } else {
+                log(`⚠ Unmapped legacy command for ST3: 0x${command.toString(16)}`, 'warn');
+                return;
+            }
         }
 
         const packet = NaveeProtocol.buildPacket(command, payload);
