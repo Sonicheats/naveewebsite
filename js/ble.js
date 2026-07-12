@@ -201,12 +201,20 @@ const NaveeBLE = (() => {
         device = selectedDevice;
         log(`Device found: ${device.name || 'Unknown'} (${device.id})`);
 
-        // Listen for disconnection
+        // Remove any existing listener first to avoid stacking duplicates
+        // on reconnect cycles — duplicate listeners = handler fires 2x = chain-disconnect
+        device.removeEventListener('gattserverdisconnected', onDisconnected);
         device.addEventListener('gattserverdisconnected', onDisconnected);
 
-        // Connect to GATT server
-        log('Connecting to GATT server...');
-        server = await device.gatt.connect();
+        // Only connect if not already connected (guards against double-connect
+        // from the reconnect handler calling gatt.connect() before us)
+        if (!device.gatt.connected) {
+            log('Connecting to GATT server...');
+            server = await device.gatt.connect();
+        } else {
+            log('GATT already connected — skipping connect()');
+            server = device.gatt;
+        }
         log('GATT connected');
 
         // Try Nordic UART first, fallback to HM-10
@@ -313,13 +321,15 @@ const NaveeBLE = (() => {
             setTimeout(async () => {
                 try {
                     if (device && device.gatt) {
-                        server = await device.gatt.connect();
+                        // Let connectToDevice() handle gatt.connect() — don't call it here too
+                        // or you get a double-connect which drops the link immediately
                         await connectToDevice(device);
                     }
                     reconnecting = false;
                 } catch (e) {
                     reconnecting = false;
-                    log('Auto-reconnect failed', 'error');
+                    log('Auto-reconnect failed: ' + e.message, 'error');
+                    emit('error', { message: 'Auto-reconnect failed: ' + e.message });
                 }
             }, 3000);
         }
