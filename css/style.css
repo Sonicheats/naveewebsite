@@ -65,7 +65,11 @@ body {
     color: var(--text-primary);
     overflow: hidden;
     height: 100vh;
+    height: 100dvh; /* Modern browsers: dynamic viewport height (handles iOS address bar) */
     width: 100vw;
+    position: fixed; /* Prevent iOS bounce/scroll on body */
+    top: 0;
+    left: 0;
 }
 
 /* === Scrollbar === */
@@ -99,6 +103,7 @@ body {
 .app-container {
     display: flex;
     height: 100vh;
+    height: 100dvh;
     position: relative;
     z-index: 1;
 }
@@ -222,6 +227,7 @@ body {
     flex-direction: column;
     overflow: hidden;
     min-width: 0;
+    min-height: 0; /* Prevent flex child from overflowing on iOS */
 }
 
 /* === Header === */
@@ -384,7 +390,9 @@ body {
 .content-area {
     flex: 1;
     overflow-y: auto;
+    overflow-x: hidden;
     padding: 20px 24px;
+    min-height: 0; /* Critical for iOS flex scrolling */
 }
 
 /* === View Panels === */
@@ -1299,6 +1307,38 @@ input[type="range"]::-webkit-slider-thumb:hover {
         padding-bottom: 60px;
     }
 
+    .header {
+        flex-shrink: 0;
+        min-height: 50px;
+        height: auto;
+        padding: 8px 12px;
+        flex-wrap: wrap;
+        gap: 6px;
+    }
+
+    .header-right {
+        flex-wrap: wrap;
+        gap: 6px;
+    }
+
+    .header-left {
+        min-width: 0;
+    }
+
+    .header-title {
+        font-size: 0.95rem;
+    }
+
+    .connection-badge {
+        font-size: 0.7rem;
+        padding: 4px 10px;
+    }
+
+    #disconnectedPanel,
+    #connectedPanel {
+        flex-wrap: wrap;
+    }
+
     .grid-dashboard {
         grid-template-columns: 1fr;
     }
@@ -1323,15 +1363,25 @@ input[type="range"]::-webkit-slider-thumb:hover {
 
 @media (max-width: 480px) {
     .content-area {
-        padding: 12px;
+        padding: 10px;
     }
 
     .header {
-        padding: 0 12px;
+        padding: 6px 10px;
+    }
+
+    .btn {
+        font-size: 0.78rem;
+        padding: 6px 12px;
     }
 
     .region-grid {
         grid-template-columns: repeat(2, 1fr);
+    }
+
+    .speedometer-container {
+        min-height: 180px;
+        padding: 10px;
     }
 }
 
@@ -1911,10 +1961,6 @@ details[open] summary {
 
 /* iOS safe area support (notch devices) */
 @supports (padding-bottom: env(safe-area-inset-bottom)) {
-    .sidebar {
-        padding-bottom: env(safe-area-inset-bottom);
-    }
-
     @media (max-width: 768px) {
         .sidebar {
             height: calc(60px + env(safe-area-inset-bottom));
@@ -1944,24 +1990,12 @@ details[open] summary {
     touch-action: manipulation;
 }
 
-/* iOS input styling fixes */
-input[type="text"],
-input[type="range"],
-.terminal-input {
-    -webkit-appearance: none;
-    appearance: none;
-    border-radius: 0; /* iOS adds border-radius to inputs */
-}
-
-.terminal-input,
-.text-input {
-    font-size: 16px !important; /* Prevent iOS zoom on focus (< 16px triggers zoom) */
-}
-
-@media (min-width: 769px) {
+/* iOS text input fixes — prevent zoom on focus (requires >= 16px) */
+@media (max-width: 768px) {
     .terminal-input,
-    .text-input {
-        font-size: 0.82rem !important; /* Reset on desktop */
+    .text-input,
+    input[type="text"] {
+        font-size: 16px !important;
     }
 }
 
@@ -1973,40 +2007,54 @@ input[type="range"],
     .quick-commands > * + * { margin-left: 6px; }
 }
 
-/* Safari range input thumb */
-input[type="range"]::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    appearance: none;
-}
-
 /* Safari backdrop-filter fallback */
-@supports not (backdrop-filter: blur(1px)) {
+@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
     .sidebar,
     .header,
     .card,
     .notification,
     .panic-overlay,
     .panic-button {
-        background-color: rgba(15, 21, 32, 0.92);
+        background-color: rgba(15, 21, 32, 0.95);
     }
 }
 
-/* Fix iOS 100vh issue (address bar) */
-@supports (-webkit-touch-callout: none) {
+/* iOS mobile layout fixes */
+@media (max-width: 768px) {
     body {
-        height: -webkit-fill-available;
+        height: 100vh;
+        height: 100dvh;
     }
 
     .app-container {
-        height: -webkit-fill-available;
+        flex-direction: column;
+        height: 100vh;
+        height: 100dvh;
     }
 
-    .sidebar {
-        height: -webkit-fill-available;
+    .main-content {
+        flex: 1;
+        min-height: 0;
+        overflow: hidden;
+    }
+
+    .content-area {
+        flex: 1;
+        min-height: 0;
+        overflow-y: auto;
+        overflow-x: hidden;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    /* Ensure cards are visible on mobile */
+    .card {
+        background: rgba(15, 21, 32, 0.75);
+        -webkit-backdrop-filter: blur(12px);
+        backdrop-filter: blur(12px);
     }
 }
 
-/* BLE Warning — iOS-specific styling */
+/* BLE Warning — styling */
 .ble-warning a {
     color: var(--accent-primary);
     text-decoration: none;
