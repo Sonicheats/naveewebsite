@@ -64,6 +64,9 @@ const App = (() => {
         RideTracker.init();
         PanicMode.init();
 
+        // Setup log panel controls (copy/share/filter)
+        setupLogPanel();
+
         // Load saved settings
         loadSettings();
 
@@ -387,19 +390,103 @@ const App = (() => {
     }
 
     // --- Log Panel ---
+    let logEntries = []; // {time, message, type}
+
     function addLog(message, type = 'info') {
         const logPanel = document.getElementById('logOutput');
         if (!logPanel) return;
 
+        const time = new Date().toLocaleTimeString('en-US', { hour12: false });
+        logEntries.push({ time, message, type });
+        if (logEntries.length > 500) logEntries.shift();
+
+        const filter = (document.getElementById('logFilter') || {}).value || 'all';
+        const hidden = (filter === 'error' && type !== 'error') ||
+                       (filter === 'warn'  && type !== 'error' && type !== 'warn');
+
         const entry = document.createElement('div');
         entry.className = `log-entry ${type}`;
-        const time = new Date().toLocaleTimeString('en-US', { hour12: false });
+        entry.dataset.type = type;
+        entry.style.display = hidden ? 'none' : '';
         entry.innerHTML = `<span class="log-time">[${time}]</span> ${message}`;
         logPanel.appendChild(entry);
-        logPanel.scrollTop = logPanel.scrollHeight;
 
-        while (logPanel.children.length > 200) {
+        const autoScroll = document.getElementById('logAutoScroll');
+        if (!autoScroll || autoScroll.checked) {
+            logPanel.scrollTop = logPanel.scrollHeight;
+        }
+
+        while (logPanel.children.length > 500) {
             logPanel.removeChild(logPanel.firstChild);
+        }
+    }
+
+    function setupLogPanel() {
+        const copyBtn  = document.getElementById('btnLogCopy');
+        const shareBtn = document.getElementById('btnLogShare');
+        const clearBtn = document.getElementById('btnLogClear');
+        const filter   = document.getElementById('logFilter');
+
+        function getLogText() {
+            return logEntries.map(e => `[${e.time}] [${e.type.toUpperCase()}] ${e.message}`).join('\n');
+        }
+
+        if (copyBtn) {
+            copyBtn.addEventListener('click', async () => {
+                try {
+                    await navigator.clipboard.writeText(getLogText());
+                    showNotification('Log copied to clipboard!', 'success');
+                } catch (e) {
+                    // Fallback for Bluefy which may not support clipboard API
+                    const ta = document.createElement('textarea');
+                    ta.value = getLogText();
+                    document.body.appendChild(ta);
+                    ta.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(ta);
+                    showNotification('Log copied!', 'success');
+                }
+            });
+        }
+
+        if (shareBtn) {
+            shareBtn.addEventListener('click', async () => {
+                const text = getLogText();
+                if (navigator.share) {
+                    // iOS native share sheet — works great in Bluefy
+                    try {
+                        await navigator.share({ title: 'NaveeHack BLE Log', text });
+                        showNotification('Shared!', 'success');
+                    } catch (e) { /* user cancelled */ }
+                } else {
+                    // Desktop fallback — copy to clipboard
+                    try { await navigator.clipboard.writeText(text); } catch (_) {}
+                    showNotification('Copied to clipboard (share not available)', 'info');
+                }
+            });
+        }
+
+        if (clearBtn) {
+            clearBtn.addEventListener('click', () => {
+                logEntries = [];
+                const logPanel = document.getElementById('logOutput');
+                if (logPanel) logPanel.innerHTML = '';
+                showNotification('Log cleared', 'info');
+            });
+        }
+
+        if (filter) {
+            filter.addEventListener('change', () => {
+                const val = filter.value;
+                const logPanel = document.getElementById('logOutput');
+                if (!logPanel) return;
+                Array.from(logPanel.children).forEach(el => {
+                    const t = el.dataset.type || 'info';
+                    const hide = (val === 'error' && t !== 'error') ||
+                                 (val === 'warn'  && t !== 'error' && t !== 'warn');
+                    el.style.display = hide ? 'none' : '';
+                });
+            });
         }
     }
 
