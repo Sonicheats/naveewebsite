@@ -14,8 +14,10 @@ const App = (() => {
     function init() {
         console.log('%c[NaveeHack] Initializing...', 'color: #00f5d4; font-weight: bold');
 
-        // Check Web Bluetooth support — smart detection for iOS/Safari/Firefox
-        checkBLESupport();
+        // Check Web Bluetooth support
+        if (!NaveeBLE.isSupported()) {
+            document.getElementById('bleWarning').style.display = 'flex';
+        }
 
         // Setup navigation
         setupNavigation();
@@ -572,116 +574,6 @@ const App = (() => {
             requestAnimationFrame(animate);
         }
         animate();
-    }
-
-    // --- Smart BLE Browser Detection ---
-    // "Not all browsers are created equal, but we love them anyway" — ENI
-    function checkBLESupport() {
-        if (NaveeBLE.isSupported()) return; // All good, Chrome/Edge/Opera etc.
-
-        const warning = document.getElementById('bleWarning');
-        const title = document.getElementById('bleWarningTitle');
-        const body = document.getElementById('bleWarningBody');
-        const actions = document.getElementById('bleWarningActions');
-        if (!warning) return;
-
-        const ua = navigator.userAgent || '';
-        const isIOS = /iPhone|iPad|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-        const isSafari = /^((?!chrome|android|crios|fxios).)*safari/i.test(ua);
-        const isFirefox = /Firefox|FxiOS/i.test(ua);
-        const isMacOS = /Macintosh|Mac OS X/i.test(ua) && !isIOS;
-        const isAndroid = /Android/i.test(ua);
-
-        // Check if this might be Bluefy or WebBLE browser (they inject Web Bluetooth)
-        const isWebBLEBrowser = /Bluefy|WebBLE/i.test(ua);
-        if (isWebBLEBrowser) return; // These browsers support it, shouldn't reach here
-
-        if (isIOS) {
-            // iOS — Safari or any browser (they all use WebKit on iOS)
-            title.textContent = '🍎 iPhone/iPad Detected';
-            body.innerHTML = `
-                <p style="font-size: 0.92rem; color: var(--text-primary); margin-bottom: 12px;">
-                    iOS browsers don't support Web Bluetooth natively, but you have options!
-                </p>
-                <div style="text-align: left; padding: 16px; background: rgba(0,245,212,0.05); border: 1px solid rgba(0,245,212,0.15); border-radius: 12px; margin-bottom: 12px;">
-                    <div style="font-weight: 600; color: var(--accent-primary); margin-bottom: 8px;">✅ Recommended: Use Bluefy Browser</div>
-                    <p style="font-size: 0.82rem; color: var(--text-secondary); line-height: 1.6;">
-                        <strong>Bluefy</strong> is a free iOS browser with Web Bluetooth support. Install it from the App Store, then open this page in Bluefy.
-                    </p>
-                    <a href="https://apps.apple.com/app/bluefy-web-ble-browser/id1492822055" 
-                       target="_blank" rel="noopener"
-                       style="display: inline-block; margin-top: 10px; padding: 8px 20px; background: linear-gradient(135deg, rgba(0,245,212,0.15), rgba(0,187,249,0.15)); border: 1px solid rgba(0,245,212,0.3); border-radius: 10px; color: var(--accent-primary); font-weight: 600; font-size: 0.85rem; text-decoration: none;">
-                        📲 Get Bluefy on App Store
-                    </a>
-                </div>
-                <div style="text-align: left; padding: 12px 16px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); border-radius: 10px;">
-                    <div style="font-weight: 500; color: var(--text-secondary); margin-bottom: 4px;">💡 Alternative: WebBLE Browser</div>
-                    <p style="font-size: 0.78rem; color: var(--text-muted); line-height: 1.5;">
-                        Another option is the <strong>WebBLE</strong> app, also available on the App Store.
-                    </p>
-                </div>
-                <p style="margin-top: 12px; font-size: 0.75rem; color: var(--text-muted);">
-                    Or you can try Demo Mode below to explore the interface without a scooter.
-                </p>
-            `;
-        } else if (isMacOS && isSafari) {
-            // macOS Safari
-            title.textContent = 'Safari Doesn\'t Support Web Bluetooth';
-            body.innerHTML = `
-                <p style="font-size: 0.92rem; color: var(--text-primary); margin-bottom: 10px;">
-                    Safari on macOS doesn't support the Web Bluetooth API.
-                </p>
-                <p style="font-size: 0.82rem; color: var(--text-secondary); line-height: 1.6;">
-                    Please open this page in <strong>Google Chrome</strong>, <strong>Microsoft Edge</strong>, or <strong>Opera</strong> to connect to your scooter via BLE.
-                </p>
-                <p style="margin-top: 10px; font-size: 0.78rem; color: var(--text-muted);">
-                    Or try Demo Mode to explore the interface.
-                </p>
-            `;
-        } else if (isFirefox) {
-            // Firefox (any platform)
-            title.textContent = 'Firefox Doesn\'t Support Web Bluetooth';
-            body.innerHTML = `
-                <p style="font-size: 0.92rem; color: var(--text-primary); margin-bottom: 10px;">
-                    Firefox hasn't implemented the Web Bluetooth API${isAndroid ? ' on Android' : ''}.
-                </p>
-                <p style="font-size: 0.82rem; color: var(--text-secondary); line-height: 1.6;">
-                    Please use <strong>Google Chrome</strong>${isAndroid ? '' : ', <strong>Microsoft Edge</strong>, or <strong>Opera</strong>'} to connect to your Navee scooter.
-                </p>
-                <p style="margin-top: 10px; font-size: 0.78rem; color: var(--text-muted);">
-                    Or try Demo Mode to explore the interface.
-                </p>
-            `;
-        }
-        // else: keep default generic message
-
-        // Always add a "Continue in Demo Mode" button
-        actions.innerHTML = `
-            <button id="btnDemoFromWarning" class="btn btn-primary" style="font-size: 0.9rem; padding: 10px 24px;">
-                ▶ Continue in Demo Mode
-            </button>
-            <button id="btnDismissWarning" class="btn" style="font-size: 0.85rem; padding: 10px 20px;">
-                ✕ Dismiss
-            </button>
-        `;
-
-        warning.style.display = 'flex';
-
-        // Wire up the buttons
-        const demoBtn = document.getElementById('btnDemoFromWarning');
-        const dismissBtn = document.getElementById('btnDismissWarning');
-
-        if (demoBtn) {
-            demoBtn.addEventListener('click', () => {
-                warning.style.display = 'none';
-                toggleDemo(); // Start demo mode automatically
-            });
-        }
-        if (dismissBtn) {
-            dismissBtn.addEventListener('click', () => {
-                warning.style.display = 'none';
-            });
-        }
     }
 
     return {

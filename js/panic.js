@@ -55,9 +55,6 @@ const PanicMode = (() => {
         }
         updateHandshakeUI();
 
-        // Mobile gesture support (triple-tap + long-press)
-        initMobileGestures();
-
         // Keyboard shortcut: triple-tap Escape or Ctrl+Shift+P
         // Plus holding 'B' and 'T' to simulate Brake and Throttle inputs
         let escapeCount = 0;
@@ -458,58 +455,6 @@ const PanicMode = (() => {
             hotProfile.locked ? 1 : 0,
         ];
         Mods.handleSettingsData({ valid: true, payload });
-    }
-
-    // --- Mobile Touch Support ---
-    function initMobileGestures() {
-        // Triple-tap anywhere on the body to trigger panic (mobile fallback)
-        let tapCount = 0;
-        let tapTimer = null;
-        let lastTapTime = 0;
-
-        document.addEventListener('touchend', (e) => {
-            // Skip if tapping on form elements or the panic button itself
-            const tag = e.target.tagName;
-            if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || tag === 'BUTTON') return;
-
-            const now = Date.now();
-            if (now - lastTapTime < 400) {
-                tapCount++;
-            } else {
-                tapCount = 1;
-            }
-            lastTapTime = now;
-
-            clearTimeout(tapTimer);
-            if (tapCount >= 3) {
-                tapCount = 0;
-                triggerPanic();
-            } else {
-                tapTimer = setTimeout(() => { tapCount = 0; }, 600);
-            }
-        }, { passive: true });
-
-        // Long-press on panic button (800ms hold = trigger)
-        const panicBtn = document.getElementById('panicBtn');
-        if (panicBtn) {
-            let longPressTimer = null;
-
-            panicBtn.addEventListener('touchstart', (e) => {
-                longPressTimer = setTimeout(() => {
-                    // Haptic buzz on iOS/Android
-                    if (navigator.vibrate) navigator.vibrate([100, 50, 200]);
-                    triggerPanic();
-                }, 800);
-            }, { passive: true });
-
-            panicBtn.addEventListener('touchend', () => {
-                clearTimeout(longPressTimer);
-            }, { passive: true });
-
-            panicBtn.addEventListener('touchmove', () => {
-                clearTimeout(longPressTimer);
-            }, { passive: true });
-        }
     }
 
     function closePanicOverlay() {
