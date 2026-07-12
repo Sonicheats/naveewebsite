@@ -110,6 +110,25 @@ const App = (() => {
         }
     }
 
+    // --- Keep-Alive ---
+    let _keepAliveTimer = null;
+    function startKeepAlive() {
+        stopKeepAlive();
+        // Read the battery characteristic every 5s — keeps the BLE link alive
+        // without sending unknown protocol commands to the scooter
+        _keepAliveTimer = setInterval(async () => {
+            try {
+                await NaveeBLE.keepAlivePing();
+            } catch (e) {
+                addLog('Keep-alive failed: ' + e.message, 'warn');
+            }
+        }, 5000);
+        addLog('Keep-alive started (5s interval)', 'info');
+    }
+    function stopKeepAlive() {
+        if (_keepAliveTimer) { clearInterval(_keepAliveTimer); _keepAliveTimer = null; }
+    }
+
     // --- BLE Event Handlers ---
     function setupBLEHandlers() {
         NaveeBLE.on('connected', (info) => {
@@ -122,14 +141,24 @@ const App = (() => {
             if (infoName) infoName.textContent = info.name;
             if (infoService) infoService.textContent = info.serviceType;
 
-            // Read initial settings
-            setTimeout(async () => {
-                try {
-                    await Mods.readCurrentSettings();
-                    await NaveeBLE.sendCommand(NaveeProtocol.CMD.READ_FIRMWARE);
-                    await NaveeBLE.sendCommand(NaveeProtocol.CMD.READ_SERIAL);
-                } catch (e) { console.warn('Initial read error:', e); }
-            }, 500);
+            // ST3 Pro uses D0FF/87290102 — protocol unknown.
+            // Do NOT blast 0x5A Ninebot commands or the scooter drops us.
+            // Only send initial reads on confirmed legacy Nordic/FFE protocol devices.
+            const svcType = (info.serviceType || '').toLowerCase();
+            const isLegacy = svcType.includes('nordic') || svcType.includes('ffe') || svcType.includes('nus');
+
+            if (isLegacy) {
+                setTimeout(async () => {
+                    try {
+                        await Mods.readCurrentSettings();
+                        await NaveeBLE.sendCommand(NaveeProtocol.CMD.READ_FIRMWARE);
+                        await NaveeBLE.sendCommand(NaveeProtocol.CMD.READ_SERIAL);
+                    } catch (e) { addLog('Initial read error: ' + e.message, 'warn'); }
+                }, 500);
+            } else {
+                addLog('ST3 Pro: holding silent — use Terminal tab to probe protocol', 'info');
+                startKeepAlive();
+            }
 
             if (currentView === 'dashboard') {
                 Dashboard.startPolling();
@@ -137,10 +166,11 @@ const App = (() => {
         });
 
         NaveeBLE.on('disconnected', () => {
+            stopKeepAlive();
             updateConnectionUI(false);
             Dashboard.stopPolling();
             addLog('Disconnected from scooter', 'warn');
-            
+
             // Cleanup demo button state if it was active
             if (demoActive) {
                 demoActive = false;
