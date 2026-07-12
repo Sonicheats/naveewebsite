@@ -769,6 +769,20 @@ const NaveeBLE = (() => {
         };
     }
 
+    // Keep the BLE link warm without sending protocol commands.
+    // Does a readValue on the TX characteristic (B003) — safe, read-only, no side effects.
+    async function keepAlivePing() {
+        if (!connected || !txChar) return;
+        try {
+            await txChar.readValue();
+        } catch (_) {
+            // If readValue fails (write-only char), try a zero-byte write instead
+            try {
+                await rxChar.writeValueWithoutResponse(new Uint8Array([0x00]));
+            } catch (_2) { /* both failed — connection probably dropped */ }
+        }
+    }
+
     function isConnected() {
         return connected || mockMode;
     }
@@ -788,6 +802,7 @@ const NaveeBLE = (() => {
         sendHex,
         getDeviceInfo,
         isConnected,
+        keepAlivePing,
         setMockMode,
         setMockInputs,
         _getServer,
