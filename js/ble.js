@@ -14,18 +14,32 @@ const NaveeBLE = (() => {
     const FALLBACK_SERVICE_UUID = '0000ffe0-0000-1000-8000-00805f9b34fb';
     const FALLBACK_CHAR_UUID    = '0000ffe1-0000-1000-8000-00805f9b34fb';
 
-    // 🎯 BRIGHTWAY / NAVEE proprietary UUIDs
-    // Source: robocoffee.de reverse engineering of Brightway scooter BLE protocol
-    // Navee is manufactured by Brightway (Suzhou) — ALL Navee models use this service:
-    // S65, V40, V50, S65C, ST3 Pro, GT3, GT5, N65, N65i, etc.
+    // 🎮 BRIGHTWAY / NAVEE proprietary UUIDs (older models S65/V40/V50)
     const BRIGHTWAY_SERVICE_UUID = '00000101-0065-6c62-2e74-6f696d2e696d';
-    const BRIGHTWAY_TXRX_UUID    = '00000100-0065-6c62-2e74-6f696d2e696d'; // TX+RX (same char)
-    const BRIGHTWAY_BUTTON_UUID  = '00000102-0065-6c62-2e74-6f696d2e696d'; // Button notify
+    const BRIGHTWAY_TXRX_UUID    = '00000100-0065-6c62-2e74-6f696d2e696d';
+    const BRIGHTWAY_BUTTON_UUID  = '00000102-0065-6c62-2e74-6f696d2e696d';
+
+    // 🛴 ST3 PRO REAL UUIDs — discovered via nRF Connect GATT dump
+    // Main proprietary service with 9 characteristics (6AA5xxxx family)
+    const ST3_SERVICE_UUID       = '87290102-3c51-43b1-a1a9-11b9dc38478b';
+    const ST3_CHAR_BASE          = '003a416fbb0b'; // last 6 bytes shared by all ST3 chars
+    // UART-pipe service — B003 has CCCD (notify), B001/B002 are write
+    const ST3_UART_SERVICE_UUID  = '0000d0ff-3c17-d293-8e48-14fe2e4da212';
+    // B00x chars: try standard 16-bit base AND the D0FF custom base
+    const ST3_B001_STD           = '0000b001-0000-1000-8000-00805f9b34fb';
+    const ST3_B002_STD           = '0000b002-0000-1000-8000-00805f9b34fb';
+    const ST3_B003_STD           = '0000b003-0000-1000-8000-00805f9b34fb'; // NOTIFY (CCCD confirmed)
+    const ST3_B001_CUSTOM        = '0000b001-3c17-d293-8e48-14fe2e4da212';
+    const ST3_B002_CUSTOM        = '0000b002-3c17-d293-8e48-14fe2e4da212';
+    const ST3_B003_CUSTOM        = '0000b003-3c17-d293-8e48-14fe2e4da212'; // NOTIFY (CCCD confirmed)
 
     // Extended pool — Web Bluetooth requires ALL services you might access to be
     // declared upfront in optionalServices, even for auto-discovery.
     const ALL_OPTIONAL_SERVICES = [
-        '00000101-0065-6c62-2e74-6f696d2e696d', // ⭐ Brightway/Navee PRIMARY (ST3 Pro, S65, V40...)
+        '87290102-3c51-43b1-a1a9-11b9dc38478b', // ⭐⭐ ST3 Pro main service (CONFIRMED)
+        '0000d0ff-3c17-d293-8e48-14fe2e4da212', // ⭐⭐ ST3 Pro UART pipe (B003=notify CONFIRMED)
+        '00001812-0000-1000-8000-00805f9b34fb', // HID (advertised type)
+        '00000101-0065-6c62-2e74-6f696d2e696d', // Brightway/Navee (older models)
         '6e400001-b5a3-f393-e0a9-e50e24dcca9e', // Nordic UART (NUS)
         '0000ffe0-0000-1000-8000-00805f9b34fb', // HM-10 FFE0
         '0000fff0-0000-1000-8000-00805f9b34fb', // Generic FFF0
@@ -39,6 +53,12 @@ const NaveeBLE = (() => {
         '00001234-0000-1000-8000-00805f9b34fb', // Custom 1234
         '0000a002-0000-1000-8000-00805f9b34fb', // Custom A002
     ];
+
+    // HID characteristic UUIDs
+    const HID_SERVICE_UUID       = '00001812-0000-1000-8000-00805f9b34fb';
+    const HID_REPORT_UUID        = '00002a4d-0000-1000-8000-00805f9b34fb';
+    const HID_REPORT_MAP_UUID    = '00002a4b-0000-1000-8000-00805f9b34fb';
+    const HID_CONTROL_UUID       = '00002a4e-0000-1000-8000-00805f9b34fb';
 
     // State
     let device = null;
@@ -243,16 +263,125 @@ const NaveeBLE = (() => {
         }
         log('GATT connected');
 
-        // --- Service Discovery: try known UUIDs first, then auto-discover ---
+        // --- Service Discovery ---
+        // Order: ST3 Pro confirmed UUIDs first, then fallbacks
         let serviceFound = false;
 
-        // 0️⃣ BRIGHTWAY/NAVEE — the actual UUID used by ALL Navee scooters
-        // (S65, V40, V50, S65C, ST3 Pro, GT series, N65i — all made by Brightway)
-        // Source: robocoffee.de BLE reverse engineering research
+        // 🛔 ST3 PRO: D0FF UART pipe — B003 has CCCD (notify CONFIRMED by nRF Connect)
+        // B003 = scooter→phone (TX), B001/B002 = phone→scooter (RX)
+        if (!serviceFound) {
+            try {
+                service = await server.getPrimaryService(ST3_UART_SERVICE_UUID);
+                log('✓ ST3 Pro UART pipe (D0FF) found!');
+
+                // Try custom-base B00x first, then standard 16-bit
+                let notifyChar = null, writeChar = null;
+                const b3candidates = [ST3_B003_CUSTOM, ST3_B003_STD];
+                const b1candidates = [ST3_B001_CUSTOM, ST3_B001_STD, ST3_B002_CUSTOM, ST3_B002_STD];
+
+                for (const uuid of b3candidates) {
+                    try { notifyChar = await service.getCharacteristic(uuid); log('  B003 notify: ' + uuid); break; } catch(_) {}
+                }
+                for (const uuid of b1candidates) {
+                    try { writeChar = await service.getCharacteristic(uuid); log('  Write char: ' + uuid); break; } catch(_) {}
+                }
+
+                if (!notifyChar && !writeChar) {
+                    // Fall back: enumerate all chars and sniff by properties
+                    const chars = await service.getCharacteristics();
+                    log('  D0FF chars: ' + chars.length + ' — sniffing properties...');
+                    for (const c of chars) {
+                        log('    ' + c.uuid + ' notify:' + c.properties.notify + ' write:' + c.properties.write);
+                        if ((c.properties.notify || c.properties.indicate) && !notifyChar) notifyChar = c;
+                        if ((c.properties.write || c.properties.writeWithoutResponse) && !writeChar) writeChar = c;
+                    }
+                }
+
+                if (notifyChar) {
+                    txChar = notifyChar;
+                    rxChar = writeChar || notifyChar;
+                    useNordic = false;
+                    serviceFound = true;
+                    log('✓ ST3 Pro D0FF connected! TX:' + txChar.uuid + ' RX:' + rxChar.uuid);
+                }
+            } catch (e) {
+                log('  D0FF attempt: ' + e.message);
+            }
+        }
+
+        // 🛴 ST3 PRO: main 87290102 service (9x 6AA5xxxx characteristics)
+        if (!serviceFound) {
+            try {
+                service = await server.getPrimaryService(ST3_SERVICE_UUID);
+                log('✓ ST3 Pro main service (87290102) found! Enumerating characteristics...');
+                const chars = await service.getCharacteristics();
+                log('  Found ' + chars.length + ' characteristics:');
+
+                let notifyChar = null, writeChar = null;
+                for (const c of chars) {
+                    log('    ' + c.uuid + ' | notify:' + c.properties.notify + ' write:' + c.properties.write + ' writeNoResp:' + c.properties.writeWithoutResponse + ' read:' + c.properties.read);
+                    if ((c.properties.notify || c.properties.indicate) && !notifyChar) notifyChar = c;
+                    if ((c.properties.write || c.properties.writeWithoutResponse) && !writeChar) writeChar = c;
+                }
+
+                if (notifyChar || writeChar) {
+                    txChar = notifyChar || writeChar;
+                    rxChar = writeChar || notifyChar;
+                    useNordic = false;
+                    serviceFound = true;
+                    log('✓ ST3 main service connected');
+                } else {
+                    log('⚠ 87290102 found but no notify/write chars — may need auth first');
+                }
+            } catch (e) {
+                log('  87290102 attempt: ' + e.message);
+            }
+        }
+        // nRF Connect confirmed Device Type: HID on this scooter
+        // Note: Chrome desktop BLOCKS HID, but Bluefy on iOS may allow it
+        if (!serviceFound) {
+            try {
+                service = await server.getPrimaryService(HID_SERVICE_UUID);
+                log('✓ HID service found! Discovering report characteristics...');
+                const chars = await service.getCharacteristics();
+                log('  HID characteristics: ' + chars.length);
+
+                let inputReport  = null; // scooter → phone (notify)
+                let outputReport = null; // phone → scooter (write)
+
+                for (const c of chars) {
+                    const props = c.properties;
+                    log('    char: ' + c.uuid + ' | notify:' + props.notify + ' write:' + props.write + ' writeNoResp:' + props.writeWithoutResponse);
+                    if ((props.notify || props.indicate) && !inputReport)  inputReport  = c;
+                    if ((props.write || props.writeWithoutResponse) && !outputReport) outputReport = c;
+                }
+
+                if (inputReport && outputReport) {
+                    txChar = inputReport;
+                    rxChar = outputReport;
+                    useNordic = false;
+                    serviceFound = true;
+                    log('✓ HID TX (input report):  ' + txChar.uuid);
+                    log('✓ HID RX (output report): ' + rxChar.uuid);
+                } else if (inputReport) {
+                    // Single-char HID (some devices reuse same char)
+                    txChar = inputReport;
+                    rxChar = inputReport;
+                    useNordic = false;
+                    serviceFound = true;
+                    log('✓ HID single-char: ' + txChar.uuid);
+                } else {
+                    log('⚠ HID service found but no usable report characteristics');
+                }
+            } catch (e) {
+                log('  HID attempt: ' + e.message);
+            }
+        }
+
+        // 1️⃣ Brightway/Navee proprietary service (S65, V40, V50, older models)
         if (!serviceFound) {
             try {
                 service = await server.getPrimaryService(BRIGHTWAY_SERVICE_UUID);
-                // Brightway uses a single characteristic for both TX and RX
                 const char = await service.getCharacteristic(BRIGHTWAY_TXRX_UUID);
                 txChar = char;
                 rxChar = char;
@@ -261,7 +390,6 @@ const NaveeBLE = (() => {
                 log('✓ Brightway/Navee service found (ST3 Pro / S65 / V40 / GT series)');
                 log('  Service: ' + BRIGHTWAY_SERVICE_UUID);
                 log('  TX+RX char: ' + BRIGHTWAY_TXRX_UUID);
-                // Also try to get the button characteristic for notifications
                 try {
                     const btnChar = await service.getCharacteristic(BRIGHTWAY_BUTTON_UUID);
                     // Use button char for TX notifications if available
