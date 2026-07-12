@@ -70,6 +70,7 @@ const NaveeBLE = (() => {
     let reconnecting = false;
     let useNordic = true;
     let useWriteWithoutResponse = false; // Detected at connect time
+    let st3Mode = false;   // ST3 Pro / D0FF service — protocol unknown, block 0x5A writes
     let mockMode = false;
     let mockSettings = {
         region: 0x01,
@@ -497,10 +498,15 @@ const NaveeBLE = (() => {
         log('Subscribed to notifications');
 
         connected = true;
+        st3Mode = !useNordic && (
+            (service && service.uuid && service.uuid.startsWith('0000d0ff')) ||
+            (service && service.uuid && service.uuid.startsWith('87290102'))
+        );
+
         emit('connected', {
             name: device.name || 'Unknown',
             id: device.id,
-            serviceType: useNordic ? 'Nordic UART' : 'FFE0 Generic',
+            serviceType: st3Mode ? 'ST3 Pro (D0FF)' : (useNordic ? 'Nordic UART' : 'FFE0 Generic'),
         });
 
         log(`✓ Connected to ${device.name}`);
@@ -531,6 +537,7 @@ const NaveeBLE = (() => {
 
     function cleanup() {
         connected = false;
+        st3Mode = false;
         server = null;
         service = null;
         txChar = null;
@@ -624,6 +631,14 @@ const NaveeBLE = (() => {
             return;
         }
 
+        // ST3 Pro protocol is unknown — sending 0x5A Ninebot commands causes disconnect
+        // Block all writes until the ST3 protocol is reverse-engineered
+        if (st3Mode) {
+            const hex = NaveeProtocol.toHexString(data instanceof Uint8Array ? data : new Uint8Array(data));
+            log(`⛔ TX BLOCKED (ST3 Pro — protocol unknown): ${hex}`, 'warn');
+            return;
+        }
+
         if (!connected || !rxChar) {
             throw new Error('Not connected');
         }
@@ -648,7 +663,7 @@ const NaveeBLE = (() => {
             }
 
             if (i + chunkSize < data.length) {
-                await new Promise(r => setTimeout(r, 50)); // Small delay between chunks
+                await new Promise(r => setTimeout(r, 50));
             }
         }
     }
