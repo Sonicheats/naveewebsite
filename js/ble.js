@@ -14,6 +14,24 @@ const NaveeBLE = (() => {
     const FALLBACK_SERVICE_UUID = '0000ffe0-0000-1000-8000-00805f9b34fb';
     const FALLBACK_CHAR_UUID    = '0000ffe1-0000-1000-8000-00805f9b34fb';
 
+    // Extended pool — Web Bluetooth requires ALL services you might access to be
+    // declared upfront in optionalServices, even for auto-discovery.
+    // Covers Nordic NUS, HM-10, Ninebot/Segway custom, Xiaomi, and generic UART clones.
+    const ALL_OPTIONAL_SERVICES = [
+        '6e400001-b5a3-f393-e0a9-e50e24dcca9e', // Nordic UART (NUS)
+        '0000ffe0-0000-1000-8000-00805f9b34fb', // HM-10 FFE0
+        '0000fff0-0000-1000-8000-00805f9b34fb', // Generic FFF0
+        '0000fee7-0000-1000-8000-00805f9b34fb', // Ninebot/Segway FEE7
+        '0000180a-0000-1000-8000-00805f9b34fb', // Device Information
+        '0000180f-0000-1000-8000-00805f9b34fb', // Battery Service
+        '0000fd00-0000-1000-8000-00805f9b34fb', // Custom FD00 (some scooters)
+        '0000ae00-0000-1000-8000-00805f9b34fb', // Custom AE00
+        '0000be00-0000-1000-8000-00805f9b34fb', // Custom BE00
+        '0000ab00-0000-1000-8000-00805f9b34fb', // Custom AB00
+        '00001234-0000-1000-8000-00805f9b34fb', // Custom 1234 (some OEMs)
+        '0000a002-0000-1000-8000-00805f9b34fb', // Custom A002
+    ];
+
     // State
     let device = null;
     let server = null;
@@ -150,7 +168,7 @@ const NaveeBLE = (() => {
                     { namePrefix: 'G5' },        // Navee G5 variants
                     { namePrefix: 'N4' },        // Navee N40 etc.
                 ],
-                optionalServices: [UART_SERVICE_UUID, FALLBACK_SERVICE_UUID],
+                optionalServices: ALL_OPTIONAL_SERVICES,
             });
 
             return await connectToDevice(device);
@@ -180,7 +198,7 @@ const NaveeBLE = (() => {
         try {
             device = await navigator.bluetooth.requestDevice({
                 acceptAllDevices: true,
-                optionalServices: [UART_SERVICE_UUID, FALLBACK_SERVICE_UUID],
+                optionalServices: ALL_OPTIONAL_SERVICES,
             });
 
             return await connectToDevice(device);
@@ -217,27 +235,79 @@ const NaveeBLE = (() => {
         }
         log('GATT connected');
 
-        // Try Nordic UART first, fallback to HM-10
+        // --- Service Discovery: try known UUIDs first, then auto-discover ---
+        let serviceFound = false;
+
+        // 1️⃣ Nordic UART (NUS) — most common on Navee
         try {
             service = await server.getPrimaryService(UART_SERVICE_UUID);
+            txChar  = await service.getCharacteristic(UART_TX_CHAR_UUID);
+            rxChar  = await service.getCharacteristic(UART_RX_CHAR_UUID);
             useNordic = true;
-            log('Nordic UART Service found');
+            serviceFound = true;
+            log('✓ Nordic UART Service (NUS) found');
+        } catch (_) { /* not NUS — keep trying */ }
 
-            txChar = await service.getCharacteristic(UART_TX_CHAR_UUID);
-            rxChar = await service.getCharacteristic(UART_RX_CHAR_UUID);
-            log('TX/RX characteristics acquired');
-        } catch (e) {
-            log('Nordic UART not found, trying fallback (FFE0)...');
+        // 2️⃣ HM-10 FFE0 fallback
+        if (!serviceFound) {
             try {
                 service = await server.getPrimaryService(FALLBACK_SERVICE_UUID);
-                useNordic = false;
                 const char = await service.getCharacteristic(FALLBACK_CHAR_UUID);
                 txChar = char;
-                rxChar = char; // Same characteristic for both
-                log('Fallback service (FFE0/FFE1) connected');
-            } catch (e2) {
-                throw new Error('No compatible BLE service found on device');
+                rxChar = char;
+                useNordic = false;
+                serviceFound = true;
+                log('✓ Fallback service (FFE0/FFE1) found');
+            } catch (_) { /* not FFE0 either */ }
+        }
+
+        // 3️⃣ Auto-discovery — walk every declared optional service and sniff
+        //    for a characteristic with NOTIFY (→ use as TX) and one with WRITE (→ RX)
+        if (!serviceFound) {
+            log('Known services not found — running auto-discovery across all optional services...');
+            for (const svcUUID of ALL_OPTIONAL_SERVICES) {
+                if (svcUUID === UART_SERVICE_UUID || svcUUID === FALLBACK_SERVICE_UUID) continue;
+                try {
+                    const svc   = await server.getPrimaryService(svcUUID);
+                    const chars = await svc.getCharacteristics();
+                    log(`  Checking ${svcUUID} — ${chars.length} characteristic(s)`);
+
+                    let foundTx = null, foundRx = null;
+                    for (const c of chars) {
+                        if (c.properties.notify || c.properties.indicate) foundTx = c;
+                        if (c.properties.write || c.properties.writeWithoutResponse) foundRx = c;
+                    }
+
+                    if (foundTx && foundRx) {
+                        service = svc;
+                        txChar  = foundTx;
+                        rxChar  = foundRx;
+                        useNordic = false;
+                        serviceFound = true;
+                        log(`✓ Auto-discovered service: ${svcUUID}`);
+                        log(`  TX char: ${foundTx.uuid}`);
+                        log(`  RX char: ${foundRx.uuid}`);
+                        break;
+                    } else if (foundTx) {
+                        // Single-char service (TX=RX same char, e.g. FFE1 style)
+                        service = svc;
+                        txChar  = foundTx;
+                        rxChar  = foundTx;
+                        useNordic = false;
+                        serviceFound = true;
+                        log(`✓ Auto-discovered single-char service: ${svcUUID}`);
+                        break;
+                    }
+                } catch (_) { /* service not on device, skip */ }
             }
+        }
+
+        if (!serviceFound) {
+            throw new Error(
+                'No compatible BLE service found on device. ' +
+                'Your scooter may use an undocumented UUID — ' +
+                'use the Scanner tab to inspect raw services.'
+            );
         }
 
         // Detect write method from characteristic properties
