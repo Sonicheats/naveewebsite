@@ -577,6 +577,24 @@ const App = (() => {
         animate();
     }
 
+    // --- iOS Viewport Height Fix ---
+    function fixViewportHeight() {
+        const updateHeight = () => {
+            // Get the actual inner height of the window, including address bar changes on iOS
+            const doc = document.documentElement;
+            doc.style.setProperty('--app-height', `${window.innerHeight}px`);
+        };
+        
+        // Initial set
+        updateHeight();
+        
+        // Update on resize and orientation change
+        window.addEventListener('resize', updateHeight);
+        window.addEventListener('orientationchange', () => {
+            setTimeout(updateHeight, 100);
+        });
+    }
+
     // --- Smart BLE Browser Detection ---
     // "Not all browsers are created equal, but we love them anyway" — ENI
     function checkBLESupport() {
