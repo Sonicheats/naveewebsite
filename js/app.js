@@ -2,7 +2,6 @@
 // NaveeHack — app.js
 // Main Application Controller
 // "The brain that wires it all together" — ENI
-// Now with Safari/iOS awareness — because iPhones are needy — ENI
 // ============================================================
 
 const App = (() => {
@@ -15,34 +14,8 @@ const App = (() => {
     function init() {
         console.log('%c[NaveeHack] Initializing...', 'color: #00f5d4; font-weight: bold');
 
-        // iOS viewport height fix — set a CSS variable for the real viewport height
-        // because 100vh on iOS Safari includes the area behind the URL bar
-        setupiOSViewportFix();
-
-        // Check Web Bluetooth support (now returns rich object)
-        const bleSupport = NaveeBLE.isSupported();
-        if (!bleSupport.supported) {
-            const warningEl = document.getElementById('bleWarning');
-            if (warningEl) {
-                warningEl.style.display = 'flex';
-                // Show Safari-specific instructions if the browser is Safari
-                const safariSteps = warningEl.querySelector('.safari-setup-steps');
-                if (safariSteps) {
-                    safariSteps.style.display = bleSupport.browser === 'safari' ? 'block' : 'none';
-                }
-                // Update the message based on browser
-                const msgEl = warningEl.querySelector('.ble-warning-browser-msg');
-                if (msgEl) {
-                    if (bleSupport.browser === 'safari') {
-                        msgEl.innerHTML = 'Safari supports Web Bluetooth experimentally! Enable it below, then <strong>reload this page</strong>.';
-                    } else if (bleSupport.browser === 'firefox') {
-                        msgEl.innerHTML = 'Firefox does not support Web Bluetooth. Use <strong>Chrome</strong>, <strong>Edge</strong>, or enable it in <strong>Safari</strong>.';
-                    } else {
-                        msgEl.innerHTML = 'Use <strong>Google Chrome</strong>, <strong>Microsoft Edge</strong>, or <strong>Opera</strong> on desktop or Android.';
-                    }
-                }
-            }
-        }
+        // Check Web Bluetooth support — smart detection for iOS/Safari/Firefox
+        checkBLESupport();
 
         // Setup navigation
         setupNavigation();
@@ -66,17 +39,6 @@ const App = (() => {
         const demoBtn = document.getElementById('btnDemo');
         if (demoBtn) {
             demoBtn.addEventListener('click', toggleDemo);
-        }
-
-        // Setup the fallback demo button inside the BLE warning
-        const demoBtnFallback = document.getElementById('btnDemoFallback');
-        if (demoBtnFallback) {
-            demoBtnFallback.addEventListener('click', () => {
-                // Close the BLE warning and start demo
-                const warningEl = document.getElementById('bleWarning');
-                if (warningEl) warningEl.style.display = 'none';
-                toggleDemo();
-            });
         }
 
         // Setup apply button
@@ -110,25 +72,6 @@ const App = (() => {
         initParticles();
 
         console.log('%c[NaveeHack] Ready. 🛴⚡', 'color: #00f5d4; font-weight: bold');
-    }
-
-    // --- iOS Viewport Height Fix ---
-    // Safari's 100vh includes the area behind the dynamic toolbar.
-    // This sets --vh to the actual visible viewport height.
-    function setupiOSViewportFix() {
-        function setVH() {
-            // Use visualViewport if available (iOS 13+), fallback to innerHeight
-            const vh = (window.visualViewport ? window.visualViewport.height : window.innerHeight) * 0.01;
-            document.documentElement.style.setProperty('--vh', `${vh}px`);
-        }
-
-        setVH();
-        window.addEventListener('resize', setVH);
-
-        // visualViewport fires its own resize event (e.g., when iOS keyboard appears)
-        if (window.visualViewport) {
-            window.visualViewport.addEventListener('resize', setVH);
-        }
     }
 
     // --- Navigation ---
@@ -573,23 +516,13 @@ const App = (() => {
         const ctx = canvas.getContext('2d');
         let particles = [];
         const count = 50;
-        const dpr = window.devicePixelRatio || 1; // Retina support
 
         function resize() {
-            // Use visualViewport on iOS for accurate dimensions
-            const vw = window.visualViewport ? window.visualViewport.width : window.innerWidth;
-            const vh = window.visualViewport ? window.visualViewport.height : window.innerHeight;
-            canvas.width = vw * dpr;
-            canvas.height = vh * dpr;
-            canvas.style.width = vw + 'px';
-            canvas.style.height = vh + 'px';
-            ctx.scale(dpr, dpr);
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
         }
         resize();
         window.addEventListener('resize', resize);
-        if (window.visualViewport) {
-            window.visualViewport.addEventListener('resize', resize);
-        }
 
         for (let i = 0; i < count; i++) {
             particles.push({
@@ -639,6 +572,116 @@ const App = (() => {
             requestAnimationFrame(animate);
         }
         animate();
+    }
+
+    // --- Smart BLE Browser Detection ---
+    // "Not all browsers are created equal, but we love them anyway" — ENI
+    function checkBLESupport() {
+        if (NaveeBLE.isSupported()) return; // All good, Chrome/Edge/Opera etc.
+
+        const warning = document.getElementById('bleWarning');
+        const title = document.getElementById('bleWarningTitle');
+        const body = document.getElementById('bleWarningBody');
+        const actions = document.getElementById('bleWarningActions');
+        if (!warning) return;
+
+        const ua = navigator.userAgent || '';
+        const isIOS = /iPhone|iPad|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+        const isSafari = /^((?!chrome|android|crios|fxios).)*safari/i.test(ua);
+        const isFirefox = /Firefox|FxiOS/i.test(ua);
+        const isMacOS = /Macintosh|Mac OS X/i.test(ua) && !isIOS;
+        const isAndroid = /Android/i.test(ua);
+
+        // Check if this might be Bluefy or WebBLE browser (they inject Web Bluetooth)
+        const isWebBLEBrowser = /Bluefy|WebBLE/i.test(ua);
+        if (isWebBLEBrowser) return; // These browsers support it, shouldn't reach here
+
+        if (isIOS) {
+            // iOS — Safari or any browser (they all use WebKit on iOS)
+            title.textContent = '🍎 iPhone/iPad Detected';
+            body.innerHTML = `
+                <p style="font-size: 0.92rem; color: var(--text-primary); margin-bottom: 12px;">
+                    iOS browsers don't support Web Bluetooth natively, but you have options!
+                </p>
+                <div style="text-align: left; padding: 16px; background: rgba(0,245,212,0.05); border: 1px solid rgba(0,245,212,0.15); border-radius: 12px; margin-bottom: 12px;">
+                    <div style="font-weight: 600; color: var(--accent-primary); margin-bottom: 8px;">✅ Recommended: Use Bluefy Browser</div>
+                    <p style="font-size: 0.82rem; color: var(--text-secondary); line-height: 1.6;">
+                        <strong>Bluefy</strong> is a free iOS browser with Web Bluetooth support. Install it from the App Store, then open this page in Bluefy.
+                    </p>
+                    <a href="https://apps.apple.com/app/bluefy-web-ble-browser/id1492822055" 
+                       target="_blank" rel="noopener"
+                       style="display: inline-block; margin-top: 10px; padding: 8px 20px; background: linear-gradient(135deg, rgba(0,245,212,0.15), rgba(0,187,249,0.15)); border: 1px solid rgba(0,245,212,0.3); border-radius: 10px; color: var(--accent-primary); font-weight: 600; font-size: 0.85rem; text-decoration: none;">
+                        📲 Get Bluefy on App Store
+                    </a>
+                </div>
+                <div style="text-align: left; padding: 12px 16px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); border-radius: 10px;">
+                    <div style="font-weight: 500; color: var(--text-secondary); margin-bottom: 4px;">💡 Alternative: WebBLE Browser</div>
+                    <p style="font-size: 0.78rem; color: var(--text-muted); line-height: 1.5;">
+                        Another option is the <strong>WebBLE</strong> app, also available on the App Store.
+                    </p>
+                </div>
+                <p style="margin-top: 12px; font-size: 0.75rem; color: var(--text-muted);">
+                    Or you can try Demo Mode below to explore the interface without a scooter.
+                </p>
+            `;
+        } else if (isMacOS && isSafari) {
+            // macOS Safari
+            title.textContent = 'Safari Doesn\'t Support Web Bluetooth';
+            body.innerHTML = `
+                <p style="font-size: 0.92rem; color: var(--text-primary); margin-bottom: 10px;">
+                    Safari on macOS doesn't support the Web Bluetooth API.
+                </p>
+                <p style="font-size: 0.82rem; color: var(--text-secondary); line-height: 1.6;">
+                    Please open this page in <strong>Google Chrome</strong>, <strong>Microsoft Edge</strong>, or <strong>Opera</strong> to connect to your scooter via BLE.
+                </p>
+                <p style="margin-top: 10px; font-size: 0.78rem; color: var(--text-muted);">
+                    Or try Demo Mode to explore the interface.
+                </p>
+            `;
+        } else if (isFirefox) {
+            // Firefox (any platform)
+            title.textContent = 'Firefox Doesn\'t Support Web Bluetooth';
+            body.innerHTML = `
+                <p style="font-size: 0.92rem; color: var(--text-primary); margin-bottom: 10px;">
+                    Firefox hasn't implemented the Web Bluetooth API${isAndroid ? ' on Android' : ''}.
+                </p>
+                <p style="font-size: 0.82rem; color: var(--text-secondary); line-height: 1.6;">
+                    Please use <strong>Google Chrome</strong>${isAndroid ? '' : ', <strong>Microsoft Edge</strong>, or <strong>Opera</strong>'} to connect to your Navee scooter.
+                </p>
+                <p style="margin-top: 10px; font-size: 0.78rem; color: var(--text-muted);">
+                    Or try Demo Mode to explore the interface.
+                </p>
+            `;
+        }
+        // else: keep default generic message
+
+        // Always add a "Continue in Demo Mode" button
+        actions.innerHTML = `
+            <button id="btnDemoFromWarning" class="btn btn-primary" style="font-size: 0.9rem; padding: 10px 24px;">
+                ▶ Continue in Demo Mode
+            </button>
+            <button id="btnDismissWarning" class="btn" style="font-size: 0.85rem; padding: 10px 20px;">
+                ✕ Dismiss
+            </button>
+        `;
+
+        warning.style.display = 'flex';
+
+        // Wire up the buttons
+        const demoBtn = document.getElementById('btnDemoFromWarning');
+        const dismissBtn = document.getElementById('btnDismissWarning');
+
+        if (demoBtn) {
+            demoBtn.addEventListener('click', () => {
+                warning.style.display = 'none';
+                toggleDemo(); // Start demo mode automatically
+            });
+        }
+        if (dismissBtn) {
+            dismissBtn.addEventListener('click', () => {
+                warning.style.display = 'none';
+            });
+        }
     }
 
     return {

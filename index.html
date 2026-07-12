@@ -2,8 +2,13 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
     <meta name="description" content="NaveeHack — Browser-based BLE tool for modifying Navee e-scooters. Connect via Web Bluetooth, read telemetry, and customize settings.">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="NaveeHack">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="theme-color" content="#0a0e17">
     <title>NaveeHack — E-Scooter BLE Tool</title>
     <link rel="stylesheet" href="css/style.css">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛴</text></svg>">
@@ -16,9 +21,12 @@
 <!-- BLE Not Supported Warning -->
 <div id="bleWarning" class="ble-warning">
     <div class="ble-warning-icon">📡</div>
-    <h2>Web Bluetooth Not Available</h2>
-    <p>Your browser doesn't support Web Bluetooth. Please use <strong>Google Chrome</strong>, <strong>Microsoft Edge</strong>, or <strong>Opera</strong> on desktop or Android.</p>
-    <p style="margin-top: 8px; font-size: 0.8rem; color: rgba(255,255,255,0.3);">Safari and Firefox do not support Web Bluetooth.</p>
+    <h2 id="bleWarningTitle">Web Bluetooth Not Available</h2>
+    <div id="bleWarningBody">
+        <p>Your browser doesn't support Web Bluetooth. Please use <strong>Google Chrome</strong>, <strong>Microsoft Edge</strong>, or <strong>Opera</strong> on desktop or Android.</p>
+        <p style="margin-top: 8px; font-size: 0.8rem; color: rgba(255,255,255,0.3);">Safari and Firefox do not support Web Bluetooth natively.</p>
+    </div>
+    <div id="bleWarningActions" style="margin-top: 16px; display: flex; gap: 10px; flex-wrap: wrap; justify-content: center;"></div>
 </div>
 
 <!-- Notifications -->
