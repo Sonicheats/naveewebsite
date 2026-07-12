@@ -302,6 +302,7 @@ const NaveeBLE = (() => {
                     txChar = notifyChar;
                     rxChar = writeChar || notifyChar;
                     useNordic = false;
+                    st3Mode = true;   // ⭐ SET HERE — no UUID fragility
                     serviceFound = true;
                     log('✓ ST3 Pro D0FF connected! TX:' + txChar.uuid + ' RX:' + rxChar.uuid);
                 }
@@ -329,6 +330,7 @@ const NaveeBLE = (() => {
                     txChar = notifyChar || writeChar;
                     rxChar = writeChar || notifyChar;
                     useNordic = false;
+                    st3Mode = true;   // ⭐ SET HERE too
                     serviceFound = true;
                     log('✓ ST3 main service connected');
                 } else {
@@ -498,10 +500,7 @@ const NaveeBLE = (() => {
         log('Subscribed to notifications');
 
         connected = true;
-        st3Mode = !useNordic && (
-            (service && service.uuid && service.uuid.startsWith('0000d0ff')) ||
-            (service && service.uuid && service.uuid.startsWith('87290102'))
-        );
+        // st3Mode is already set in the D0FF/87290102 discovery blocks above
 
         emit('connected', {
             name: device.name || 'Unknown',
